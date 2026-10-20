@@ -303,6 +303,10 @@ export const register: Register = on => {
     const values = new Map(metrics.map(m => [m.key, displayed(m, now, config.count)]))
     const isPulsing = config.pulse && metrics.some(m => m.isLimit && m.pct >= limitCrit)
     const isPulseDim = isPulsing && Math.floor(now / PULSE_MS) % 2 === 1
+    // Con el límite alcanzado y el piloto encendido, su «on» parpadea: está
+    // esperando al reinicio para seguir solo.
+    const isPilotWaiting = config.autoContinue && limits.pending !== undefined
+    const isPilotDim = isPilotWaiting && Math.floor(now / PULSE_MS) % 2 === 1
     const fiveLeft = five?.resetsAt !== undefined ? five.resetsAt - now : undefined
     const isCountdown = config.countdown && fiveLeft !== undefined && fiveLeft > 0 && fiveLeft <= COUNTDOWN_MS
     const isCounting = [...values.values()].some(v => v.isCounting)
@@ -336,7 +340,13 @@ export const register: Register = on => {
     }
 
     // El reloj más lento que aún mueve todas las animaciones en curso.
-    const tickMs = isCounting ? 100 : isPulsing ? PULSE_MS : isCountdown || isFlashing ? 1000 : undefined
+    const tickMs = isCounting
+      ? 100
+      : isPulsing || isPilotWaiting
+        ? PULSE_MS
+        : isCountdown || isFlashing
+          ? 1000
+          : undefined
     if (ticker?.ms !== tickMs) {
       ticker?.timer.cancel()
       ticker = tickMs === undefined ? undefined : { ms: tickMs, timer: $.clock.every(tickMs, () => $.ui.invalidate('ui.render')) }
@@ -613,7 +623,9 @@ export const register: Register = on => {
         <Box flexDirection="row" flexShrink={0}>
           <Text> </Text>
           <Button key="auto" plain onPress={toggleAuto}>
-            <Text color={config.autoContinue ? PALETTE.ok : PALETTE.mut}>{AUTO}</Text>
+            <Text color={config.autoContinue ? PALETTE.ok : PALETTE.mut} bold={isPilotWaiting} dimColor={isPilotDim}>
+              {AUTO}
+            </Text>
           </Button>
         </Box>
       )

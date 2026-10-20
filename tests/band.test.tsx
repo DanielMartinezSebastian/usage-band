@@ -462,3 +462,34 @@ test('al llegar al límite: diálogo para decidir y, con el piloto automático, 
   expect(sent.some(t => /continúa con la tarea/.test(t))).toBe(true)
   await line.unmount()
 })
+
+// El parpadeo sigue la hora real (Date.now): el test espera de verdad entre
+// lecturas, con el temporizador del entorno de tests.
+declare const setTimeout: (fn: () => void, ms: number) => unknown
+
+test('con el límite alcanzado y el piloto encendido, su «on» parpadea', async ($, on) => {
+  const resetsAt = new Date(Date.now() + 60 * 60_000).toISOString()
+  const atLimit = usage([{ kind: 'five_hour', percentUsed: 100, resetsAt }], 32)
+  answerSession(on, () => atLimit, { config: { autoContinue: true } })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  await $.session.measure({
+    context: atLimit.context,
+    rateLimits: atLimit.rateLimits,
+    changed: ['rateLimits'],
+  } as Parameters<typeof $.session.measure>[0])
+
+  const ui = await mountAt($, 160)
+  // Alterna cada medio segundo entre normal y atenuado, en negrita.
+  const states = new Set<boolean>()
+  for (let i = 0; i < 4; i++) {
+    const pilot = await text(ui, /^⟳ on$/)
+    expect(pilot?.props.bold).toBe(true)
+    states.add(Boolean(pilot?.props.dimColor))
+    await new Promise<void>(resolve => setTimeout(() => resolve(), 260))
+    await ui.redraw()
+  }
+  expect([...states].sort()).toEqual([false, true])
+  await ui.unmount()
+})

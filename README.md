@@ -43,7 +43,7 @@ Escribe `/usage-band` en el prompt para abrir el panel de configuración, con el
 - **Notificaciones**: al pasar del umbral en la ventana de 5 h o en la semana (una vez por ventana), al llegar al límite y cuando se reinicia («ya puedes seguir»).
 - **Aviso al enviar**: un aviso en pantalla si mandas un prompt pasado el umbral; no lo frena.
 - **Compactar**: al terminar un turno con el contexto pasado el umbral, compacta la conversación (apagado por defecto).
-- **Límite alcanzado**: se abre un diálogo con la hora de reinicio para decidir: `a` encender el piloto automático, `n` solo avisar. El interruptor de la línea, pegado tras la hora de la ventana de 5 h (`5h 42% 19:20 ⟳ on`, verde encendido; `⊘ off`, gris apagado), hace lo mismo con un clic.
+- **Límite alcanzado**: se abre un diálogo con la hora de reinicio para decidir: `a` encender el piloto automático, `n` solo avisar. El interruptor de la línea, pegado tras la hora de la ventana de 5 h (`5h 42% 19:20 ⟳ on`, verde encendido; `⊘ off`, gris apagado), hace lo mismo con un clic. Con el límite alcanzado y el piloto encendido, `⟳ on` parpadea en negrita mientras espera el reinicio.
 - **Piloto automático**: al reiniciarse el límite (con 30 s de margen) envía solo «El límite de uso ya se ha reiniciado: continúa con la tarea donde la dejaste.». El límite pendiente se guarda en `$.store`, así que sobrevive a cerrar la sesión si se vuelve a abrir antes del reinicio; con la sesión cerrada no puede enviar nada.
 
 Los valores por defecto y su validación están en `hooks/config.ts`; el panel, en `hooks/panel.tsx`.
