@@ -91,6 +91,7 @@ test('cada detalle se abre desde la etiqueta de su métrica, hacia la derecha', 
   expect([...new Set(lefts)].sort((a, b) => Number(a) - Number(b))).toEqual([
     0,
     line.indexOf('ctx'),
+    line.indexOf('$0.4'),
     line.indexOf('5h'),
     line.indexOf('wk'),
   ])
@@ -306,5 +307,44 @@ test('el ancho medido (sin el indicador de Claude Code) ajusta la línea', async
   await ui.resize({ columns: 40, rows: 1, in: 'measure' })
   expect(await text(ui, /^\$0\.4$/)).toBeUndefined()
   expect(await text(ui, /^Opus$/, 'model-name')).toBeDefined()
+  await ui.unmount()
+})
+
+test('el importe tiene su detalle: último turno, su parte de la ventana de 5 h, ritmo y caché', async ($, on) => {
+  const at = (five: number, usd: number): SessionUsage => ({
+    ...usage([{ kind: 'five_hour', percentUsed: five }], 32),
+    startedAt: Date.now() - 2 * HOUR,
+    cost: { usd },
+  })
+  let current = at(10, 1)
+  answerSession(on, () => current)
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  const ui = await mountAt($, 160)
+
+  // La ventana sube 1 punto con $1 de importe: la ventana entera vale ≈ $100.
+  current = at(11, 2)
+  await ui.redraw()
+  await $.turn.start({ text: 'hola', turnId: 't1' })
+  current = at(11.5, 2.5)
+  await $.turn.complete({
+    turnId: 't1',
+    answer: 'adiós',
+    durationMs: 1000,
+    isAborted: false,
+    reason: 'answer',
+    usage: {
+      model: 'claude-opus-5-5',
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_read_input_tokens: 900,
+      cache_creation_input_tokens: 0,
+    },
+  } as Parameters<typeof $.turn.complete>[0])
+  await ui.redraw()
+
+  await reveal(ui, 'cost', 120)
+  const detail = await text(ui, /último turno/, 'detail-cost')
+  expect(detail?.text).toMatch(/último turno \$0\.5 \(0\.5% de 5h\) · ventana de 5h ≈ \$100 · \$1\.\d\/h · 1 turno · caché 90%/)
   await ui.unmount()
 })

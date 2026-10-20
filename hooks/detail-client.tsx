@@ -59,7 +59,11 @@ const exits = new Map<string, { rest: string; from: number; start?: number }>()
 // Las piezas del detalle, en orden, con su estilo; `fill` de 0 a 1 es cuánto
 // se ha llenado la barra.
 const piecesOf = (props: DetailProps, rest: string, fill: number): Piece[] => {
-  const pieces: Piece[] = [{ text: `${props.label} `, color: props.labelColor, bold: true }]
+  // La etiqueta lleva un espacio detrás solo si sigue la barra (el resto ya
+  // empieza por ` · `).
+  const pieces: Piece[] = [
+    { text: props.pct !== undefined ? `${props.label} ` : props.label, color: props.labelColor, bold: true },
+  ]
   if (props.pct !== undefined) {
     const pct = props.pct * ease(fill)
     // El porcentaje ocupa siempre el ancho del valor final, para que nada se

@@ -38,6 +38,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 - Sin color de fondo: el texto se rellena con espacios hasta el final de la fila para tapar lo de debajo.
 - Modelo: id, alias de settings, ventana, esfuerzo (de `turn.step`), estilo (de `prompt.compose`), thinking/fast si están activos, versión de Claude Code.
 - ctx: usados/total y libres. 5h y wk: reinicia, faltan, % usado/libre.
+- Importe (`$17`): con suscripción no se cobra; es lo que costaría la sesión a precio de API. Su detalle: coste del último turno (diferencia del total entre `turn.start` y `turn.complete` del hilo principal) y qué parte de la ventana de 5 h supone, cuánto vale la ventana entera en dólares (lo que sube la ventana en la sesión frente a lo que sube el importe, desde 1 punto), ritmo $/h, turnos y aciertos de caché (tokens leídos de caché / tokens de entrada). Es una estimación que mejora con la sesión.
 
 **Animaciones**
 - Conteo cuando un % cambia (600 ms, negrita).

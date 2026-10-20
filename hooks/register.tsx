@@ -105,6 +105,19 @@ const limitMetric = (
 let lastEffort: string | undefined
 let outputStyle: string | undefined
 
+// El importe. Con suscripción no se cobra: es lo que costaría la sesión a
+// precio de API. De cada turno del hilo principal se guarda lo que costó (la
+// diferencia del total entre su inicio y su final) y sus tokens, para la caché.
+// `base` es la primera lectura de la ventana de 5 h con su importe: lo que sube
+// la ventana desde ahí frente a lo que sube el importe da cuánto vale la
+// ventana entera en dólares.
+let costAtTurnStart: number | undefined
+let lastTurnCost: number | undefined
+let turns = 0
+let cacheRead = 0
+let tokensIn = 0
+let base: { cost: number; five: number } | undefined
+
 // Estado de las animaciones, por métrica.
 const shown = new Map<string, number>()
 const counting = new Map<string, { from: number; to: number; start: number }>()
@@ -152,6 +165,26 @@ const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined)
 
 export const register: Register = on => {
   // turn.step es un evento en streaming: el hook es un generador que reenvía.
+  on('turn.start', async ($, e, next) => {
+    if (!e.agentId) costAtTurnStart = (await $.session.usage()).cost?.usd
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    if (!e.agentId) {
+      const total = (await $.session.usage()).cost?.usd
+      if (total !== undefined && costAtTurnStart !== undefined) lastTurnCost = Math.max(total - costAtTurnStart, 0)
+      turns += 1
+      const u = e.usage
+      if (u) {
+        cacheRead += u.cache_read_input_tokens
+        tokensIn += u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
+      }
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
+
   on('turn.step', async function* ($, e, next) {
     if (!e.agentId && e.effort != null) lastEffort = String(e.effort)
     return yield* next(e)
@@ -189,7 +222,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const [{ context, rateLimits, cost }, model, settings, version] = await Promise.all([
+    const [{ context, rateLimits, cost, startedAt }, model, settings, version] = await Promise.all([
       $.session.usage(),
       $.session.model(),
       $.settings.read(),
@@ -244,6 +277,33 @@ export const register: Register = on => {
     const isFlashing = now < flashUntil
 
     const metrics = [ctx, five, week].filter((m): m is Metric => m !== null)
+
+    // Cuánto vale la ventana de 5 h entera en dólares, según lo que ha subido
+    // en esta sesión frente al importe; hace falta que haya subido 1 punto.
+    // Si la ventana se reinicia, se vuelve a medir desde ahí.
+    const usd = cost?.usd ?? 0
+    if (five && (base === undefined || five.pct < base.five)) base = { cost: usd, five: five.pct }
+    const windowUsd =
+      five && base && five.pct - base.five >= 1 ? ((usd - base.cost) / (five.pct - base.five)) * 100 : undefined
+    const hours = (now - startedAt) / 3_600_000
+    const money = (n: number) => `$${n >= 10 ? Math.round(n) : r1(n) || Math.round(n * 100) / 100}`
+    // Ordenado por importancia: lo que se recorta es siempre lo último.
+    const costDetails = [
+      lastTurnCost !== undefined
+        ? windowUsd
+          ? part(
+              `último turno ${money(lastTurnCost)} (${r1((lastTurnCost / windowUsd) * 100)}% de 5h)`,
+              `último ${money(lastTurnCost)} · ${r1((lastTurnCost / windowUsd) * 100)}% 5h`,
+              `${money(lastTurnCost)} · ${r1((lastTurnCost / windowUsd) * 100)}%`,
+            )
+          : part(`último turno ${money(lastTurnCost)}`, `último ${money(lastTurnCost)}`, money(lastTurnCost))
+        : undefined,
+      windowUsd ? part(`ventana de 5h ≈ ${money(windowUsd)}`, `5h ≈ ${money(windowUsd)}`, `≈${money(windowUsd)}`) : undefined,
+      hours >= 0.05 ? part(`${money(usd / hours)}/h`) : undefined,
+      turns > 0 ? part(`${turns} ${turns === 1 ? 'turno' : 'turnos'}`, `${turns} t.`) : undefined,
+      tokensIn > 0 ? part(`caché ${Math.round((cacheRead / tokensIn) * 100)}%`) : undefined,
+      part('equivalente a precio de API', 'precio API', 'API'),
+    ].filter((d): d is Part => d !== undefined)
     const values = new Map(metrics.map(m => [m.key, displayed(m, now)]))
     const isPulsing = metrics.some(m => m.isLimit && m.pct >= 90)
     const isPulseDim = isPulsing && Math.floor(now / PULSE_MS) % 2 === 1
@@ -301,15 +361,18 @@ export const register: Register = on => {
     ]
     const metricWidth = (m: Metric) => m.label.length + 1 + pctText(m).length + (inline(m)?.text.length ?? 0)
     // Los tramos de la línea en orden, con su ancho; la métrica, si lo es.
+    type LinePiece = { width: number; metric?: Metric; key?: string }
     const pieces = (l: Layout) =>
-      [
-        l.name !== undefined ? { width: [...l.name].length } : null,
-        l.ctx && ctx ? { width: metricWidth(ctx), metric: ctx } : null,
-        l.cost ? { width: costText.length } : null,
-        five ? { width: metricWidth(five), metric: five } : null,
-        isFlashing && !five ? { width: '5h ventana nueva'.length } : null,
-        l.week && week ? { width: metricWidth(week), metric: week } : null,
-      ].filter((p): p is { width: number; metric?: Metric } => p !== null)
+      (
+        [
+          l.name !== undefined ? { width: [...l.name].length } : null,
+          l.ctx && ctx ? { width: metricWidth(ctx), metric: ctx } : null,
+          l.cost ? { width: costText.length, key: 'cost' } : null,
+          five ? { width: metricWidth(five), metric: five } : null,
+          isFlashing && !five ? { width: '5h ventana nueva'.length } : null,
+          l.week && week ? { width: metricWidth(week), metric: week } : null,
+        ] as (LinePiece | null)[]
+      ).filter((p): p is LinePiece => p !== null)
     const lineWidth = (l: Layout) => {
       const ps = pieces(l)
       return ps.reduce((n, p) => n + p.width, 0) + SEP * Math.max(ps.length - 1, 0)
@@ -327,6 +390,7 @@ export const register: Register = on => {
     pieces(layout).forEach((p, i) => {
       if (i > 0) x += SEP
       if (p.metric) labelAt.set(p.metric.key, x)
+      if (p.key) labelAt.set(p.key, x)
       x += p.width
     })
 
@@ -462,8 +526,12 @@ export const register: Register = on => {
     }
 
     const modelPlan = plan(0, [...fullName].length, modelDetails, false)
+    const costPlan = labelAt.has('cost') ? plan(labelAt.get('cost')!, costText.length, costDetails, false) : undefined
     const layers: Layer[] = [
       ...metrics.filter(m => labelAt.has(m.key)).map(metricLayer),
+      ...(costPlan
+        ? [{ key: 'cost', left: costPlan.left, props: { label: costText, labelColor: PALETTE.fg, ...restProps(costPlan) } }]
+        : []),
       ...(layout.name !== undefined
         ? [{ key: 'model', left: modelPlan.left, props: { label: fullName, labelColor: PALETTE.acc2, ...restProps(modelPlan) } }]
         : []),
@@ -494,10 +562,10 @@ export const register: Register = on => {
         ) : null}
         {layout.ctx && ctx ? segment(ctx, lead()) : null}
         {layout.cost ? (
-          <Text>
+          <Box flexDirection="row" flexShrink={0} hover={{ scope: 'cost' }}>
             {lead() ? null : sep}
             <Text color={PALETTE.fg}>{costText}</Text>
-          </Text>
+          </Box>
         ) : null}
         {five ? segment(five, lead()) : null}
         {isFlashing && !five ? (
