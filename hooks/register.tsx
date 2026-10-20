@@ -158,6 +158,9 @@ export const register: Register = on => {
 
   on('session.start', ($, e, next) => {
     ticker = undefined
+    // Borra el aviso fijado bajo el prompt que dejó un diagnóstico anterior:
+    // un $.ui.status se queda hasta que el mod lo quita.
+    $.ui.status(undefined)
     // La cuenta atrás de las tarjetas avanza aunque no haya turnos.
     $.clock.every(60_000, () => $.ui.invalidate('ui.render'))
     return next(e)
