@@ -20,8 +20,6 @@ export type DetailProps = {
   role?: 'exit'
   label: string
   labelColor: string
-  // Si la etiqueta va en negrita, como en la línea (el importe no lo va).
-  labelBold?: boolean
   // Con barra: el porcentaje, su color y las celdas de la barra (0, sin barra).
   pct?: number
   color?: string
@@ -64,7 +62,7 @@ const piecesOf = (props: DetailProps, rest: string, fill: number): Piece[] => {
   // La etiqueta lleva un espacio detrás solo si sigue la barra (el resto ya
   // empieza por ` · `).
   const pieces: Piece[] = [
-    { text: props.pct !== undefined ? `${props.label} ` : props.label, color: props.labelColor, bold: props.labelBold ?? true },
+    { text: props.pct !== undefined ? `${props.label} ` : props.label, color: props.labelColor, bold: true },
   ]
   if (props.pct !== undefined) {
     const pct = props.pct * ease(fill)
