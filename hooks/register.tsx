@@ -530,7 +530,7 @@ export const register: Register = on => {
     const layers: Layer[] = [
       ...metrics.filter(m => labelAt.has(m.key)).map(metricLayer),
       ...(costPlan
-        ? [{ key: 'cost', left: costPlan.left, props: { label: costText, labelColor: PALETTE.fg, ...restProps(costPlan) } }]
+        ? [{ key: 'cost', left: costPlan.left, props: { label: costText, labelColor: PALETTE.fg, labelBold: false, ...restProps(costPlan) } }]
         : []),
       ...(layout.name !== undefined
         ? [{ key: 'model', left: modelPlan.left, props: { label: fullName, labelColor: PALETTE.acc2, ...restProps(modelPlan) } }]

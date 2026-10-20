@@ -345,6 +345,8 @@ test('el importe tiene su detalle: último turno, su parte de la ventana de 5 h,
 
   await reveal(ui, 'cost', 120)
   const detail = await text(ui, /último turno/, 'detail-cost')
+  // El importe se ve igual que en la línea: sin negrita.
+  expect((await text(ui, /^\$2\.5$/, 'detail-cost'))?.props.bold).toBeFalsy()
   expect(detail?.text).toMatch(/último turno \$0\.5 \(0\.5% de 5h\) · ventana de 5h ≈ \$100 · \$1\.\d\/h · 1 turno · caché 90%/)
   await ui.unmount()
 })
