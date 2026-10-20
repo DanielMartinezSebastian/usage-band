@@ -208,7 +208,7 @@ export const register: Register = on => {
 
   // Cada medición: redibuja la línea y mira los límites. Pasado `alertAt`,
   // un aviso; al 100 %, una notificación y el diálogo para decidir si
-  // autocontinuar. Una vez por ventana (por su hora de reinicio).
+  // encender el piloto automático. Una vez por ventana (por su hora de reinicio).
   on('session.measure', async ($, e, next) => {
     $.ui.invalidate('ui.render')
     if (!e.changed.includes('rateLimits')) return next(e)
@@ -308,7 +308,7 @@ export const register: Register = on => {
     const isCounting = [...values.values()].some(v => v.isCounting)
 
     // El temporizador del límite: salta al reiniciarse (con un margen), avisa
-    // de que se puede seguir y, con autocontinuar, envía el prompt.
+    // de que se puede seguir y, con el piloto automático, envía el prompt.
     const pending = limits.pending
     if (!pending) {
       limits.timer?.timer.cancel()
@@ -375,7 +375,7 @@ export const register: Register = on => {
     const fullName = modelName(model)
     const shortName = fullName.split(' ')[0] ?? fullName
     const costText = `$${r1(cost?.usd ?? 0)}`
-    const AUTO = 'auto ●'
+    const AUTO = 'piloto ●'
     type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean; auto: boolean }
     // Lo que se quitó en /usage-band no está en ningún nivel.
     const layouts: Layout[] = (
@@ -396,7 +396,7 @@ export const register: Register = on => {
     const metricWidth = (m: Metric) => m.label.length + 1 + pctText(m).length + (inline(m)?.text.length ?? 0)
 
     // Los tramos de la línea, en el orden elegido en /usage-band, con su ancho;
-    // la métrica, si lo es. El interruptor de autocontinuar va al final.
+    // la métrica, si lo es. El interruptor del piloto automático va al final.
     type LinePiece = { key: string; width: number; metric?: Metric }
     const pieceOf = (segment: Segment, l: Layout): LinePiece[] => {
       if (segment === 'model') return l.name !== undefined ? [{ key: 'model', width: [...l.name].length }] : []
@@ -569,10 +569,12 @@ export const register: Register = on => {
         : []),
     ]
 
-    // El interruptor de autocontinuar: un clic lo enciende o lo apaga.
+    // El interruptor del piloto automático: un clic lo enciende o lo apaga.
     const toggleAuto = async () => {
       await $.store.set(STORE_KEY, { ...config, autoContinue: !config.autoContinue })
-      $.ui.toast(config.autoContinue ? 'Autocontinuar apagado' : 'Autocontinuar encendido: seguirá solo al reiniciarse el límite')
+      $.ui.toast(
+        config.autoContinue ? 'Piloto automático apagado' : 'Piloto automático encendido: seguirá solo al reiniciarse el límite',
+      )
       $.ui.invalidate('ui.render')
     }
 

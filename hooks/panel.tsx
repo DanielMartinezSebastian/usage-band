@@ -20,7 +20,7 @@ const LINE: [Toggle, string, string][] = [
   ['fiveReset', '5', 'Hora de reinicio'],
   ['week', '6', 'Semana'],
   ['brand', '7', 'Marca < >'],
-  ['auto', '8', 'Interruptor auto'],
+  ['auto', '8', 'Interruptor piloto'],
 ]
 
 const ANIMATIONS: [Toggle, string, string][] = [
@@ -36,7 +36,7 @@ const ALERTS: [Toggle, string, string][] = [
   ['alert', 'o', 'Notificaciones'],
   ['guard', 'p', 'Aviso al enviar'],
   ['compact', 's', 'Compactar contexto'],
-  ['autoContinue', 't', 'Autocontinuar'],
+  ['autoContinue', 't', 'Piloto automático'],
 ]
 
 // Umbral, su tecla para bajar y para subir ('' sin tecla), y su nombre.

@@ -14,7 +14,7 @@ export type Config = {
   fiveReset: boolean // la hora de reinicio junto al 5h
   week: boolean
   brand: boolean
-  auto: boolean // el interruptor de autocontinuar en la línea
+  auto: boolean // el interruptor del piloto automático en la línea
   // En qué orden van los tramos.
   order: Segment[]
   // Animaciones.
@@ -28,7 +28,7 @@ export type Config = {
   alert: boolean // notificación al pasar de `alertAt` y cuando se puede seguir
   guard: boolean // aviso al enviar un prompt pasado `guardAt`
   compact: boolean // compactar al terminar un turno pasado `compactAt` de contexto
-  autoContinue: boolean // al llegar al límite, seguir solo cuando se reinicie
+  autoContinue: boolean // piloto automático: al llegar al límite, seguir solo cuando se reinicie
   // Umbrales (porcentajes).
   limitWarn: number
   limitCrit: number

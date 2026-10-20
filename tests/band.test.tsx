@@ -294,8 +294,9 @@ test('la marca siempre se ve: va encima de todo y los detalles acaban antes', as
 
 test('la marca no se pinta si tras la línea no queda sitio', async ($, on) => {
   answerSession(on, FULL)
-  // La línea mide 49: a 51 columnas no caben la marca y su separación.
-  const ui = await mountAt($, 51)
+  // A 40 columnas la línea se compacta a «Opus · ctx 32% · 5h 42% 14:16 ·
+  // wk 93%» (38): no caben la marca y su separación.
+  const ui = await mountAt($, 40)
   expect(await ui.find({ key: 'brand' })).toBeUndefined()
   await ui.unmount()
 })
@@ -384,11 +385,11 @@ test('el orden elegido cambia la posición de los tramos en la línea', async ($
   await ui.unmount()
 })
 
-test('el interruptor «auto» de la línea enciende y apaga autocontinuar', async ($, on) => {
+test('el interruptor «piloto» de la línea enciende y apaga el piloto automático', async ($, on) => {
   answerSession(on, FULL)
   const ui = await mountAt($, 160)
 
-  const label = /^auto ●$/
+  const label = /^piloto ●$/
   expect((await text(ui, label))?.props.color).toBe('#9aa3b5')
   await ui.press({ key: 'auto' })
   await ui.redraw()
@@ -416,7 +417,7 @@ test('un estilo predefinido cambia los tramos de golpe', async ($, on) => {
   await panel.unmount()
 })
 
-test('al llegar al límite: diálogo para decidir y, con autocontinuar, sigue solo al reiniciarse', async ($, on) => {
+test('al llegar al límite: diálogo para decidir y, con el piloto automático, sigue solo al reiniciarse', async ($, on) => {
   const resetsAt = new Date(Date.now() + 60_000).toISOString()
   const atLimit = usage([{ kind: 'five_hour', percentUsed: 100, resetsAt }], 32)
   const clock = answerSession(on, () => atLimit)
@@ -441,7 +442,7 @@ test('al llegar al límite: diálogo para decidir y, con autocontinuar, sigue so
   } as Parameters<typeof $.session.measure>[0])
   expect(opened).toContain('usage-band-limit')
 
-  // El diálogo explica el límite; «a» enciende autocontinuar.
+  // El diálogo explica el límite; «a» enciende el piloto automático.
   const dialog = await $.ui.mount({
     plugin: 'usage-band',
     surface: 'terminal',

@@ -30,21 +30,21 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 Escribe `/usage-band` en el prompt para abrir el panel de configuración, con el letrero del mod en la cabecera (`hooks/banner.ts`, en el degradado de acento; no sale si el panel es más estrecho que él) (Esc o `q` lo cierran). Cada opción tiene su tecla y se guarda al momento (en `$.store`, dura entre sesiones); la línea se redibuja en el acto.
 
-- **Línea** (`1`–`8`): modelo, contexto, importe, ventana de 5 h, hora de reinicio, semana, marca `< >` e interruptor `auto`.
+- **Línea** (`1`–`8`): modelo, contexto, importe, ventana de 5 h, hora de reinicio, semana, marca `< >` e interruptor `piloto`.
 - **Orden**: flechas ↑ ↓ para mover cada tramo (con Tab y Enter).
 - **Animaciones** (`a`–`f`): conteo, pulso de alarma, cuenta atrás, barrido de detalles, giro de la marca, brillo del modelo (apagado por defecto).
-- **Avisos y protección** (`o`, `p`, `s`, `t`): notificaciones del sistema, aviso al enviar un prompt, compactar el contexto, autocontinuar.
+- **Avisos y protección** (`o`, `p`, `s`, `t`): notificaciones del sistema, aviso al enviar un prompt, compactar el contexto, piloto automático.
 - **Umbrales** (de 5 en 5): colores de límites (70/90 %) y contexto (50/80 %), notificar desde (80 %), avisar al enviar desde (95 %), compactar desde (85 %).
 - **Estilos** (`u`, `v`, `w`): Completo, Solo límites, Mínimo.
 - `r` restablece los valores por defecto.
 
-## Avisos, protección y autocontinuar (`hooks/limits.tsx`)
+## Avisos, protección y piloto automático (`hooks/limits.tsx`)
 
 - **Notificaciones**: al pasar del umbral en la ventana de 5 h o en la semana (una vez por ventana), al llegar al límite y cuando se reinicia («ya puedes seguir»).
 - **Aviso al enviar**: un aviso en pantalla si mandas un prompt pasado el umbral; no lo frena.
 - **Compactar**: al terminar un turno con el contexto pasado el umbral, compacta la conversación (apagado por defecto).
-- **Límite alcanzado**: se abre un diálogo con la hora de reinicio para decidir: `a` autocontinuar, `n` solo avisar. El interruptor `auto ●` de la línea (verde encendido, gris apagado) hace lo mismo con un clic.
-- **Autocontinuar**: al reiniciarse el límite (con 30 s de margen) envía solo «El límite de uso ya se ha reiniciado: continúa con la tarea donde la dejaste.». El límite pendiente se guarda en `$.store`, así que sobrevive a cerrar la sesión si se vuelve a abrir antes del reinicio; con la sesión cerrada no puede enviar nada.
+- **Límite alcanzado**: se abre un diálogo con la hora de reinicio para decidir: `a` encender el piloto automático, `n` solo avisar. El interruptor `piloto ●` de la línea (verde encendido, gris apagado) hace lo mismo con un clic.
+- **Piloto automático**: al reiniciarse el límite (con 30 s de margen) envía solo «El límite de uso ya se ha reiniciado: continúa con la tarea donde la dejaste.». El límite pendiente se guarda en `$.store`, así que sobrevive a cerrar la sesión si se vuelve a abrir antes del reinicio; con la sesión cerrada no puede enviar nada.
 
 Los valores por defecto y su validación están en `hooks/config.ts`; el panel, en `hooks/panel.tsx`.
 
@@ -99,7 +99,7 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 5. Colores corporativos y marca `< >` que gira al pensar y al pasar el ratón.
 6. Probado y quitado: banda sobre el prompt, Client para el hover (no recibe el ratón en esta terminal), cursor en el barrido, brillo del modelo (apagado), detalle del importe.
 7. Comando `/usage-band` con un panel de configuración (tramos, animaciones y umbrales), guardado en `$.store`.
-8. Avisos, protección, autocontinuar con diálogo e interruptor en la línea, estilos predefinidos y orden de los tramos.
+8. Avisos, protección, piloto automático con diálogo e interruptor en la línea, estilos predefinidos y orden de los tramos.
 - `$` no se puede guardar en una variable; `turn.step` exige `async function*` con `return yield* next(e)`.
 
 ## Desarrollo

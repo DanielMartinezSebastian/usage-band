@@ -3,14 +3,14 @@ import type { On, Timer } from 'claude-code'
 import { readConfig, STORE_KEY } from './config'
 import { PALETTE } from './palette'
 
-// Avisos, protección y autocontinuar.
+// Avisos, protección y piloto automático.
 //
 // - Aviso: notificación del sistema al pasar de `alertAt` en la ventana de
 //   5 h o en la semana, y «ya puedes seguir» cuando el límite se reinicia.
 // - Protección: un aviso al enviar un prompt pasado `guardAt`, y compactar la
 //   conversación al terminar un turno pasado `compactAt` de contexto.
 // - Límite: al llegar al 100 %, una notificación y un diálogo para decidir si
-//   autocontinuar; con autocontinuar encendido, al reiniciarse el límite se
+//   encender el piloto automático; con él encendido, al reiniciarse el límite se
 //   envía solo un prompt para seguir.
 //
 // La detección del límite va en el `session.measure` de register.tsx y el
@@ -95,7 +95,7 @@ export const registerLimits = (on: On) => {
     return result
   })
 
-  // El diálogo del límite: qué pasa y qué hacer con autocontinuar.
+  // El diálogo del límite: qué pasa y qué hacer con el piloto automático.
   on('ui.render', { component: 'Pane', requestId: LIMIT_PANE }, async ($, e, next) => {
     if (e.surface === 'mobile') return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
@@ -130,7 +130,7 @@ export const registerLimits = (on: On) => {
         </Text>
         <Text> </Text>
         <Text>
-          Autocontinuar:{' '}
+          Piloto automático:{' '}
           <Text color={config.autoContinue ? PALETTE.ok : PALETTE.mut}>
             {config.autoContinue ? '● encendido' : '○ apagado'}
           </Text>
@@ -141,14 +141,14 @@ export const registerLimits = (on: On) => {
         <Text> </Text>
         <Box flexDirection="row">
           <Button key="auto-on" hotkey="a" variant="primary" onPress={() => choose(true)}>
-            Autocontinuar {when}
+            Encender piloto: seguir {when}
           </Button>
           <Text> </Text>
           <Button key="auto-off" hotkey="n" onPress={() => choose(false)}>
             No, solo avísame
           </Button>
         </Box>
-        <Text color={PALETTE.mut}>a autocontinuar · n solo avisar · Esc cerrar · también con «auto» en la línea</Text>
+        <Text color={PALETTE.mut}>a encender piloto · n solo avisar · Esc cerrar · también con «piloto» en la línea</Text>
       </Box>
     )
   })
