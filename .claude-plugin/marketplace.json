@@ -1,0 +1,5 @@
+{
+  "name": "usage-band",
+  "owner": { "name": "Daniel Martínez Sebastián" },
+  "plugins": [{ "name": "usage-band", "source": "./" }]
+}

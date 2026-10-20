@@ -1,1 +1,6 @@
-{ "name": "usage-band", "version": "0.1.0", "description": "Banda sobre el prompt con uso del plan y prueba de hover" }
+{
+  "name": "usage-band",
+  "version": "0.1.0",
+  "description": "Uso de la sesión y del plan bajo el prompt de Claude Code, con detalle al pasar el ratón",
+  "author": { "name": "Daniel Martínez Sebastián" }
+}

@@ -6,7 +6,25 @@ Mod de Claude Code que dibuja bajo el prompt (componente `PromptHint`) el uso de
 Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 · wk 31%
 ```
 
-Se carga en cada sesión con `env.CLAUDE_CODE_PLUGIN_DIRS` en `~/.claude/settings.json`. Sustituye al antiguo statusLine (`~/bin/claude-statusline.sh`, que sigue en disco).
+## Instalación
+
+En el prompt de una sesión de Claude Code en la terminal:
+
+```
+/plugin install usage-band --marketplace DanielMartinezSebastian/usage-band
+```
+
+Responde `y` para añadir el marketplace y elige el ámbito (el de usuario, el primero, lo carga en todas tus sesiones). Desde una shell:
+
+```
+claude plugin install usage-band --marketplace DanielMartinezSebastian/usage-band
+```
+
+En la app de escritorio, donde `/plugin` no funciona: pulsa + junto al cuadro del prompt, Plugins, Add marketplace con `DanielMartinezSebastian/usage-band` y luego Add plugin.
+
+Necesita una suscripción Pro o Max de claude.ai para los datos de la ventana de 5 h y de la semana; sin ella solo muestra el modelo, el contexto y el coste. El hover y las animaciones necesitan una terminal que informe del ratón (el modo fullscreen de Claude Code).
+
+Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` en `~/.claude/settings.json` a la carpeta del repositorio; así sustituyó al antiguo statusLine del autor.
 
 ## Estado (2026-10-20)
 
