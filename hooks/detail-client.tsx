@@ -3,9 +3,9 @@ import type { ClientSurface, RenderElement } from 'claude-code'
 import { PALETTE } from './palette'
 
 // Un detalle del hover, dibujado en la propia terminal. Está oculto (sin
-// columnas) hasta que el hover lo revela; al revelarse se construye de
-// izquierda a derecha con un borde de barrido en el color de acento, como una
-// diapositiva que entra, y su barra se llena desde cero a la vez. Si sus datos
+// columnas) hasta que el hover lo revela; al revelarse su contenido se
+// construye de izquierda a derecha, como una diapositiva que entra, y su
+// barra se llena desde cero a la vez. Si sus datos
 // no caben enteros (`parts`), los muestra de uno en uno por turnos.
 
 export type DetailProps = {
@@ -26,7 +26,6 @@ const TICK_MS = 16
 const WIPE_MS = 180
 const FILL_MS = 200
 const TURN_MS = 2000
-const EDGE = '▌'
 
 const ease = (t: number) => 1 - (1 - Math.min(Math.max(t, 0), 1)) ** 3
 
@@ -82,11 +81,11 @@ export default function Detail(props: DetailProps, surface: ClientSurface<State>
   const rest = parts.length > 0 ? parts[(s?.turn ?? 0) % parts.length]! : (props.text ?? '')
   if (rest) pieces.push({ text: ` · ${rest}`, color: PALETTE.mut })
 
-  // Barrido: se ven las primeras `shown` columnas; el borde va delante y el
-  // resto queda en blanco, tapando la línea de debajo.
+  // Barrido: del contenido se ven los primeros `shown` caracteres; el resto de
+  // la fila queda en blanco, tapando la línea de debajo.
   const width = surface.columns
-  const shown = Math.floor(width * ease(ms / WIPE_MS))
-  const isWiping = shown < width
+  const length = pieces.reduce((n, p) => n + [...p.text].length, 0)
+  const shown = Math.floor(length * ease(ms / WIPE_MS))
   const out: RenderElement[] = []
   let used = 0
   for (const p of pieces) {
@@ -100,8 +99,7 @@ export default function Detail(props: DetailProps, surface: ClientSurface<State>
     )
     used += [...take].length
   }
-  const blank = Math.max(width - used - (isWiping ? 1 : 0), 0)
-  if (isWiping && used < width) out.push(<Text color={PALETTE.acc}>{EDGE}</Text>)
+  const blank = Math.max(width - used, 0)
   out.push(<Text>{' '.repeat(blank)}</Text>)
 
   return <Text wrap="truncate-end">{out}</Text>

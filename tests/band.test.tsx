@@ -102,16 +102,15 @@ test('al revelarse, el detalle se construye de izquierda a derecha y su barra se
   const ui = await mount($)
 
   await reveal(ui, 'five', 80, false)
-  // Recién revelado: el borde del barrido va delante y la barra aún no está.
-  expect(await text(ui, /^▌$/, 'detail-five')).toBeDefined()
-  expect(await text(ui, /42%$/, 'detail-five')).toBeUndefined()
-  await ui.advance(80)
-  // A medio barrido: ya se ve la etiqueta y el borde sigue avanzando.
+  // Recién revelado: aún no se ve nada del contenido.
+  expect(await text(ui, /5h/, 'detail-five')).toBeUndefined()
+  await ui.advance(48)
+  // A medio barrido: ya está la etiqueta, pero no el final.
   expect(await text(ui, /^5h $/, 'detail-five')).toBeDefined()
-  expect(await text(ui, /^▌$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /faltan/, 'detail-five')).toBeUndefined()
   await ui.advance(400)
-  // Construido: sin borde, la barra llena hasta el 42 % y el texto entero.
-  expect(await text(ui, /^▌$/, 'detail-five')).toBeUndefined()
+  // Construido: la barra llena hasta el 42 % y el texto entero, sin cursor.
+  expect(await text(ui, /▌/, 'detail-five')).toBeUndefined()
   expect(await text(ui, /^███████░{9} 42%$/, 'detail-five')).toBeDefined()
   expect(await text(ui, /^ · reinicia \d\d:\d\d · faltan 2h\dm/, 'detail-five')).toBeDefined()
   await ui.unmount()
