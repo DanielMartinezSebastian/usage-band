@@ -3,7 +3,7 @@
 Mod de Claude Code que dibuja bajo el prompt (componente `PromptHint`) el uso de la sesión y del plan, con un detalle por métrica al pasar el ratón.
 
 ```
-Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 · wk 31%
+Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 ⊘ off · wk 31%                < >
 ```
 
 ## Instalación
@@ -28,7 +28,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 ## Personalizar: `/usage-band`
 
-Escribe `/usage-band` en el prompt para abrir el panel de configuración, con el letrero del mod en la cabecera (`hooks/banner.ts`, en el degradado de acento; no sale si el panel es más estrecho que él) (Esc o `q` lo cierran). Cada opción tiene su tecla y se guarda al momento (en `$.store`, dura entre sesiones); la línea se redibuja en el acto.
+Escribe `/usage-band` en el prompt para abrir el panel de configuración; Esc o `q` lo cierran. En la cabecera va el letrero del mod (`hooks/banner.ts`, en el degradado de acento), que no sale si el panel es más estrecho que él. Cada opción tiene su tecla y se guarda al momento en `$.store` (dura entre sesiones); la línea se redibuja en el acto.
 
 - **Línea** (`1`–`8`): modelo, contexto, importe, ventana de 5 h, hora de reinicio, semana, marca `< >` e interruptor `piloto`.
 - **Orden**: flechas ↑ ↓ para mover cada tramo (con Tab y Enter).
@@ -88,7 +88,13 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 - El hover CSS no avisa al mod; un Client oculto sí se vuelve a dibujar al revelarse (cambio de tamaño). Con eso se animan la entrada de los detalles y la marca al pasar el ratón.
 - La superficie oculta un detalle al instante cuando el puntero se va; para animar la salida, una capa siempre visible recibe lo que se veía por estado compartido entre instancias del mismo módulo de Client.
 - Un `$.ui.status(...)` queda fijado bajo el prompt hasta que el mod llama `$.ui.status(undefined)`; el mod lo borra en `session.start` por si quedó uno de un diagnóstico.
-- El kit de tests (`claude plugin test`) monta componentes, simula el ratón (`pointer`), el tamaño de un Client (`resize`), su reloj (`advance`) y los eventos del motor (`$.turn.start`, `$.turn.complete`), pero no pinta: el hover CSS y el aspecto final solo se comprueban en la terminal.
+- `$` no se puede guardar en una variable ni pasarse a otra función (el módulo no carga); sí se puede usar dentro de funciones definidas en el propio hook.
+- `turn.step` exige `async function*` con `return yield* next(e)`.
+- Cada evento admite un solo hook sin filtro por mod: dos `on('session.start', …)` impiden que cargue, aunque estén en archivos distintos.
+- Una variable llamada `next` dentro de un hook tapa la continuación y el módulo no carga.
+- Un `ui.render` no puede devolver `null`: para no dibujar, `return next(e)`.
+- Un botón (`Button`) en la línea bajo el prompt sí recibe clics en la terminal.
+- El kit de tests (`claude plugin test`) monta componentes, simula el ratón (`pointer`), el tamaño de un Client (`resize`), su reloj (`advance`) y los eventos del motor (`$.turn.start`, `$.turn.complete`), pero no pinta: el hover CSS y el aspecto final solo se comprueban en la terminal. En los tests, una operación simulada (`ui.open`, `ui.notify`…) responde `{ value }`; `$.clock` usa el reloj de `mock.clock` (no el `advance` del dibujo), y el almacén se siembra con `mock.store(on, inicial)`.
 
 ## Progreso
 
@@ -100,7 +106,27 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 6. Probado y quitado: banda sobre el prompt, Client para el hover (no recibe el ratón en esta terminal), cursor en el barrido, brillo del modelo (apagado), detalle del importe.
 7. Comando `/usage-band` con un panel de configuración (tramos, animaciones y umbrales), guardado en `$.store`.
 8. Avisos, protección, piloto automático con diálogo e interruptor en la línea, estilos predefinidos y orden de los tramos.
-- `$` no se puede guardar en una variable; `turn.step` exige `async function*` con `return yield* next(e)`.
+9. Letrero «usage band» en la cabecera del panel.
+10. Interruptor del piloto: se llama «piloto automático», va pegado tras la hora de la ventana de 5 h como `⟳ on` / `⊘ off` (verde / gris), parpadea al esperar el reinicio con el piloto encendido y se queda en rojo si el límite llega con él apagado. Verificado en la terminal: el clic en un botón de la línea funciona.
+
+**Ideas pendientes**
+- Resumen grande en el panel (barras de la ventana de 5 h, la semana y el contexto, con minigráfica del consumo).
+- Sonido con los avisos (necesita incluir un archivo de audio en el mod).
+- Historial de consumo entre sesiones.
+- Confirmar de dónde sale el puntito `·` bajo la línea.
+
+## Estructura
+
+| Archivo | Qué hace |
+|---|---|
+| `hooks/register.tsx` | Hooks principales: la línea (`PromptHint`), los detalles, la medición del uso y del límite, el temporizador del reinicio |
+| `hooks/panel.tsx` | `/usage-band` y su panel de configuración |
+| `hooks/limits.tsx` | Avisos al enviar, compactación, diálogo del límite y estado del piloto automático |
+| `hooks/config.ts` | Opciones, valores por defecto, estilos y validación de lo guardado |
+| `hooks/palette.ts` · `hooks/banner.ts` | Colores corporativos y letrero |
+| `hooks/detail-client.tsx` | Detalle del hover: barrido de entrada y salida, barra, rotación |
+| `hooks/brand-client.tsx` · `shimmer-client.tsx` · `measure-client.tsx` | Marca `< >`, brillo del modelo y medición del ancho real de la fila |
+| `tests/band.test.tsx` | 26 tests (`claude plugin test`) |
 
 ## Desarrollo
 
