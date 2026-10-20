@@ -307,6 +307,9 @@ export const register: Register = on => {
     // esperando al reinicio para seguir solo.
     const isPilotWaiting = config.autoContinue && limits.pending !== undefined
     const isPilotDim = isPilotWaiting && Math.floor(now / PULSE_MS) % 2 === 1
+    // Con el límite alcanzado y el piloto apagado, su «off» se queda en rojo
+    // (sin parpadear), para recordar que se puede encender.
+    const pilotColor = config.autoContinue ? PALETTE.ok : limits.pending ? PALETTE.bad : PALETTE.mut
     const fiveLeft = five?.resetsAt !== undefined ? five.resetsAt - now : undefined
     const isCountdown = config.countdown && fiveLeft !== undefined && fiveLeft > 0 && fiveLeft <= COUNTDOWN_MS
     const isCounting = [...values.values()].some(v => v.isCounting)
@@ -623,7 +626,7 @@ export const register: Register = on => {
         <Box flexDirection="row" flexShrink={0}>
           <Text> </Text>
           <Button key="auto" plain onPress={toggleAuto}>
-            <Text color={config.autoContinue ? PALETTE.ok : PALETTE.mut} bold={isPilotWaiting} dimColor={isPilotDim}>
+            <Text color={pilotColor} bold={isPilotWaiting} dimColor={isPilotDim}>
               {AUTO}
             </Text>
           </Button>

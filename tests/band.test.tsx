@@ -493,3 +493,27 @@ test('con el límite alcanzado y el piloto encendido, su «on» parpadea', async
   expect([...states].sort()).toEqual([false, true])
   await ui.unmount()
 })
+
+test('con el límite alcanzado y el piloto apagado, su «off» se queda en rojo sin parpadear', async ($, on) => {
+  const resetsAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString()
+  const atLimit = usage([{ kind: 'five_hour', percentUsed: 100, resetsAt }], 32)
+  answerSession(on, () => atLimit)
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  await $.session.measure({
+    context: atLimit.context,
+    rateLimits: atLimit.rateLimits,
+    changed: ['rateLimits'],
+  } as Parameters<typeof $.session.measure>[0])
+
+  const ui = await mountAt($, 160)
+  for (let i = 0; i < 3; i++) {
+    const pilot = await text(ui, /^⊘ off$/)
+    expect(pilot?.props.color).toBe('#ff5470')
+    expect(pilot?.props.dimColor).toBeFalsy()
+    await new Promise<void>(resolve => setTimeout(() => resolve(), 260))
+    await ui.redraw()
+  }
+  await ui.unmount()
+})
