@@ -86,9 +86,9 @@ test('cada detalle se abre desde la etiqueta de su métrica, hacia la derecha', 
   const line = 'Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 · wk 93%'
   const layers = await ui.findAll({ type: 'Box' })
   const lefts = layers.filter(b => b.props.position === 'absolute').map(b => b.props.left)
-  // La capa de medición y la del modelo empiezan en 0.
-  expect(lefts.sort((a, b) => Number(a) - Number(b))).toEqual([
-    0,
+  // Cada detalle tiene dos capas (salida y hover) en el mismo sitio; la de
+  // medición y las del modelo empiezan en 0.
+  expect([...new Set(lefts)].sort((a, b) => Number(a) - Number(b))).toEqual([
     0,
     line.indexOf('ctx'),
     line.indexOf('5h'),
@@ -177,6 +177,28 @@ const mountAt = ($: Engine, columns: number) =>
     props: HINT,
     viewport: { columns, rows: 30 },
   })
+
+test('al ocultarse, el detalle se retira de derecha a izquierda', async ($, on) => {
+  answerSession(on, FULL)
+  const ui = await mount($)
+
+  await reveal(ui, 'five', 80)
+  // Abierto: la capa de salida está vacía.
+  expect(await text(ui, /5h/, 'exit-five')).toBeUndefined()
+  // El puntero se va: la superficie oculta el detalle y la capa de salida
+  // lo redibuja entero.
+  await ui.resize({ columns: 0, rows: 0, in: 'detail-five' })
+  await ui.advance(16)
+  expect(await text(ui, /faltan/, 'exit-five')).toBeDefined()
+  // A medio camino ya se ha ido el final, pero sigue la etiqueta.
+  await ui.advance(64)
+  expect(await text(ui, /faltan/, 'exit-five')).toBeUndefined()
+  expect(await text(ui, /^5h $/, 'exit-five')).toBeDefined()
+  // Al acabar no queda nada.
+  await ui.advance(400)
+  expect(await text(ui, /5h/, 'exit-five')).toBeUndefined()
+  await ui.unmount()
+})
 
 test('responsive: en estrecho quita coste, versión del modelo y semana, por ese orden', async ($, on) => {
   answerSession(on, FULL)

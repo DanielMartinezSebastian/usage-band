@@ -1,5 +1,6 @@
 import type { Register, RenderChildren, SessionRateLimit, Timer } from 'claude-code'
 
+import type { DetailProps } from './detail-client'
 import { PALETTE } from './palette'
 
 // Línea mínima bajo el prompt (modelo · ctx · coste · 5h · wk). Cada métrica
@@ -418,35 +419,48 @@ export const register: Register = on => {
     // entero, o sus datos por turnos si no cabe.
     const restProps = (p: Plan) => (p.mode === 'rotate' ? { parts: p.parts } : { text: p.text })
 
-    // El detalle repite la etiqueta donde estaba, así la vista no tiene que
-    // buscar dónde empieza. Lo dibuja un Client: al revelarse se construye de
-    // izquierda a derecha y su barra se llena.
-    const detail = (m: Metric) => {
-      const head = m.label.length + 1 + `${r1(m.pct)}%`.length
-      const p = plan(labelAt.get(m.key) ?? 0, head, m.details, true)
-      return overlay(m.key, p.left, [
+    // Cada detalle son dos capas en el mismo sitio, dibujadas por el mismo
+    // Client: la del hover, que se construye al revelarse, y la de salida,
+    // siempre visible y vacía, que lo retira de derecha a izquierda cuando el
+    // hover lo oculta. Todas las de salida van antes que todas las del hover,
+    // para que un detalle abierto quede siempre por encima.
+    type Layer = { key: string; left: number; props: Omit<DetailProps, 'id' | 'role'> }
+
+    const exitLayer = (l: Layer) => (
+      <Box position="absolute" top={0} left={l.left} width={overlayWidth(l.left) ?? '100%'}>
         <Client
-          key={`detail-${m.key}`}
+          key={`exit-${l.key}`}
           module="./detail-client.tsx"
           width="100%"
-          props={{ label: m.label, labelColor: PALETTE.acc, pct: m.pct, color: m.color, cells: p.cells, ...restProps(p) }}
-        />,
+          props={{ ...l.props, id: l.key, role: 'exit' }}
+        />
+      </Box>
+    )
+
+    // El detalle repite la etiqueta donde estaba, así la vista no tiene que
+    // buscar dónde empieza.
+    const hoverLayer = (l: Layer) =>
+      overlay(l.key, l.left, [
+        <Client key={`detail-${l.key}`} module="./detail-client.tsx" width="100%" props={{ ...l.props, id: l.key }} />,
       ])
+
+    const metricLayer = (m: Metric): Layer => {
+      const head = m.label.length + 1 + `${r1(m.pct)}%`.length
+      const p = plan(labelAt.get(m.key) ?? 0, head, m.details, true)
+      return {
+        key: m.key,
+        left: p.left,
+        props: { label: m.label, labelColor: PALETTE.acc, pct: m.pct, color: m.color, cells: p.cells, ...restProps(p) },
+      }
     }
 
-    const visible = metrics.filter(m => labelAt.has(m.key))
     const modelPlan = plan(0, [...fullName].length, modelDetails, false)
-    const modelDetail =
-      layout.name !== undefined
-        ? overlay('model', modelPlan.left, [
-            <Client
-              key="detail-model"
-              module="./detail-client.tsx"
-              width="100%"
-              props={{ label: fullName, labelColor: PALETTE.acc2, ...restProps(modelPlan) }}
-            />,
-          ])
-        : null
+    const layers: Layer[] = [
+      ...metrics.filter(m => labelAt.has(m.key)).map(metricLayer),
+      ...(layout.name !== undefined
+        ? [{ key: 'model', left: modelPlan.left, props: { label: fullName, labelColor: PALETTE.acc2, ...restProps(modelPlan) } }]
+        : []),
+    ]
 
     // Si cada tramo es el primero de la línea (sin separador delante).
     let isFirst = true
@@ -497,8 +511,8 @@ export const register: Register = on => {
             </Box>
           </Box>
         ) : null}
-        {visible.map(detail)}
-        {modelDetail}
+        {layers.map(exitLayer)}
+        {layers.map(hoverLayer)}
       </Box>
     )
   })
