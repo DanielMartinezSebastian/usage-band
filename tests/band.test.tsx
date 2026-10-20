@@ -201,12 +201,30 @@ test('responsive: a media anchura el detalle usa sus textos cortos en vez de cor
   await ui.unmount()
 })
 
-test('la marca está en pausa: su capa no pinta nada', async ($, on) => {
+test('la marca: quieta en reposo, se transforma como el spinner de Claude al trabajar', async ($, on) => {
   answerSession(on, FULL)
-  const ui = await mountAt($, 120)
-  await ui.resize({ columns: 120, rows: 1, in: 'brand' })
-  expect(await text(ui, /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]$/, 'brand')).toBeUndefined()
-  await ui.unmount()
+  const idle = await mountAt($, 120)
+  await idle.resize({ columns: 120, rows: 1, in: 'brand' })
+  const still = await text(idle, /^✻$/, 'brand')
+  expect(still?.props.color).toBe('#c084fc')
+  await idle.advance(1000)
+  expect(await text(idle, /^✻$/, 'brand')).toBeDefined()
+  await idle.unmount()
+
+  const working = await mountAt($, 120)
+  await working.redraw({ ...HINT, isWorking: true })
+  await working.resize({ columns: 120, rows: 1, in: 'brand' })
+  const seen = new Set<string>()
+  for (let i = 0; i < 10; i++) {
+    seen.add((await text(working, /^[·✢✳✶✻✽]$/, 'brand'))?.text ?? '')
+    await working.advance(120)
+  }
+  // Recorre toda la secuencia de formas.
+  expect([...seen].sort()).toEqual(['·', '✢', '✳', '✶', '✻', '✽'].sort())
+  // Sin sitio tras la línea (49) no se pinta.
+  await working.resize({ columns: 51, rows: 1, in: 'brand' })
+  expect(await text(working, /^[·✢✳✶✻✽]$/, 'brand')).toBeUndefined()
+  await working.unmount()
 })
 
 test('el ancho medido por la marca (sin el indicador de Claude Code) ajusta la línea', async ($, on) => {

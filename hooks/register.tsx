@@ -115,9 +115,9 @@ let flashUntil = 0
 // lo mide la marca, una capa que ocupa la fila entera.
 let measured: number | undefined
 
-// La marca martinezsebastian al final de la línea (brand-client.tsx), en
-// pausa: la capa sigue midiendo el ancho real, pero no se pinta.
-const SHOW_BRAND = false
+// La marca martinezsebastian al final de la línea (brand-client.tsx). Con
+// false la capa sigue midiendo el ancho real, pero no se pinta.
+const SHOW_BRAND = true
 
 // El reloj rápido solo corre mientras alguna animación lo necesita.
 let ticker: { ms: number; timer: Timer } | undefined

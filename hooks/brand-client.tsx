@@ -2,9 +2,12 @@ import type { ClientSurface, RenderElement } from 'claude-code'
 
 import { PALETTE } from './palette'
 
-// La marca martinezsebastian al final de la línea: sus corchetes `< >` con un
-// punto que gira dentro, en el degradado de acento de la web (#7cc4ff →
-// #c084fc). Gira despacio en reposo y rápido mientras Claude trabaja.
+// La marca martinezsebastian al final de la línea: los corchetes `< >` de su
+// logo con un glifo dentro que se transforma como el spinner de Claude Code:
+// una secuencia de formas de estrella (· ✢ ✳ ✶ ✻ ✽) que va y vuelve, cada
+// fotograma sustituyendo al anterior en la misma celda. Mientras Claude
+// trabaja se anima y su color recorre el degradado de acento de la web
+// (#7cc4ff → #c084fc); en reposo se queda quieta en ✻.
 //
 // Es una capa de toda la fila: se pinta a la derecha si tras la línea
 // (`lineWidth`) queda sitio, y envía al hooks module el ancho de la fila,
@@ -13,11 +16,13 @@ import { PALETTE } from './palette'
 // `show`: pintar la marca; sin ella la capa solo mide.
 export type BrandProps = { isWorking: boolean; lineWidth: number; show: boolean }
 
-type State = { frame: number }
+type State = { step: number }
 
-const TICK_MS = 100
-const IDLE_EVERY = 4 // en reposo, un paso cada 4 ticks
-const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+const TICK_MS = 120
+// Ida y vuelta: · ✢ ✳ ✶ ✻ ✽ ✻ ✶ ✳ ✢
+const GLYPHS = ['·', '✢', '✳', '✶', '✻', '✽']
+const FRAMES = [...GLYPHS, ...GLYPHS.slice(1, -1).reverse()]
+const IDLE = '✻'
 // Los dos acentos de la paleta, en RGB.
 const rgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
 const FROM = rgb(PALETTE.acc)
@@ -25,17 +30,16 @@ const TO = rgb(PALETTE.acc2)
 const WIDTH = 3
 const GAP = 1 // espacio mínimo entre la línea y la marca
 
-// El color del punto: va y vuelve entre los dos acentos.
-const tint = (frame: number) => {
-  const t = (1 - Math.cos((frame / FRAMES.length) * Math.PI)) / 2
+// El color del glifo: va y vuelve entre los dos acentos en un ciclo completo
+// de fotogramas.
+const tint = (step: number) => {
+  const t = (1 - Math.cos(((step % FRAMES.length) / FRAMES.length) * 2 * Math.PI)) / 2
   return `#${FROM.map((c, i) => Math.round(c + (TO[i]! - c) * t).toString(16).padStart(2, '0')).join('')}`
 }
 
-// Los últimos datos, para que el reloj sepa a qué ritmo girar; los ticks,
-// fuera del estado para no redibujar en los que no avanza; y el último ancho
+// Los últimos datos, para que el reloj sepa si animar; y el último ancho
 // enviado, para no repetirlo.
 let isWorking = false
-let ticks = 0
 let sentWidth = -1
 
 export default function Brand(props: BrandProps, surface: ClientSurface<State>): RenderElement {
@@ -43,11 +47,11 @@ export default function Brand(props: BrandProps, surface: ClientSurface<State>):
   const { Box, Text } = surface.elements
 
   if (surface.state === undefined) {
-    surface.setState({ frame: 0 })
+    surface.setState({ step: 0 })
+    // En reposo no avanza: ningún redibujo.
     surface.every(TICK_MS, () => {
       const s = surface.state
-      ticks += 1
-      if (s && (isWorking || ticks % IDLE_EVERY === 0)) surface.setState({ frame: (s.frame + 1) % (FRAMES.length * 2) })
+      if (s && isWorking) surface.setState({ step: s.step + 1 })
     })
   }
 
@@ -58,12 +62,14 @@ export default function Brand(props: BrandProps, surface: ClientSurface<State>):
 
   if (!props.show || surface.columns - props.lineWidth < WIDTH + GAP) return <Text>{''}</Text>
 
-  const frame = surface.state?.frame ?? 0
+  const step = surface.state?.step ?? 0
+  const glyph = props.isWorking ? FRAMES[step % FRAMES.length] : IDLE
+  const color = props.isWorking ? tint(step) : PALETTE.acc2
   return (
     <Box width="100%" justifyContent="flex-end">
       <Text>
         <Text bold color={PALETTE.fg}>{'<'}</Text>
-        <Text color={tint(frame)}>{FRAMES[frame % FRAMES.length]}</Text>
+        <Text color={color}>{glyph}</Text>
         <Text bold color={PALETTE.fg}>{'>'}</Text>
       </Text>
     </Box>

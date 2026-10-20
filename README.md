@@ -48,11 +48,11 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 **Responsive**: si la línea no cabe se quita, por orden, el coste, la versión del modelo, la semana, el contexto y el modelo; la ventana de 5 h y su hora siempre quedan. Cada detalle tiene sus datos ordenados por importancia y en tres versiones (larga, media, corta); se usa la más rica que quepa: barra 16 + textos largos → textos medios → barra 8 + cortos → sin barra. Primero abierto desde su etiqueta; si no cabe, más a la izquierda; si ni la versión corta cabe, sus datos rotan de uno en uno cada 2 s (`rotate-client.tsx`).
 
-## Marca martinezsebastian (en pausa)
+## Marca martinezsebastian
 
-`brand-client.tsx` dibuja `<⠋>` (corchetes del logo de la web, `C:/COMPARTIDO/martinezsebastian/public/android-chrome-192x192.png`) con un punto braille que gira en el degradado de acento del kit trama-ui (#7cc4ff → #c084fc): despacio en reposo, rápido mientras Claude trabaja. Funciona y se vio en la terminal, pero se ha pausado (2026-10-20) con `SHOW_BRAND = false` en `register.tsx`. Para reactivarla, ponlo a `true`.
+`brand-client.tsx` dibuja al final de la línea los corchetes `< >` del logo de la web con un glifo dentro que se transforma como el spinner de Claude Code: formas de estrella `· ✢ ✳ ✶ ✻ ✽` que van y vuelven, cada fotograma (120 ms) sustituyendo al anterior en la misma celda, con el color recorriendo el degradado de acento (#7cc4ff → #c084fc). Solo se anima mientras Claude trabaja; en reposo se queda quieta en `✻` (#c084fc) y no redibuja. Se oculta con `SHOW_BRAND = false` en `register.tsx` (la capa sigue midiendo el ancho).
 
-La capa de la marca sigue activa aunque no pinte: mide el ancho real de la fila (ver abajo).
+La técnica de Claude Code (investigada, su código no es público): no es una imagen, son caracteres sustituidos en la misma celda a intervalo fijo, con una secuencia de fotogramas fija en el código; el `✻` recuerda al logo de Anthropic, por eso parece que el logo "respira".
 
 Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (asociado a `⏵⏵ auto mode on`), no del mod: no se ha confirmado.
 
