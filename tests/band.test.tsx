@@ -15,12 +15,13 @@ const usage = (rateLimits: SessionUsage['rateLimits'], percent?: number): Sessio
 
 // Answers what the plugin reads beneath it; `reading` returns the current usage.
 const answerSession = (on: On, reading: () => SessionUsage, saved: Record<string, unknown> = {}) => {
-  mock.clock(on, { now: Date.now() })
+  const clock = mock.clock(on, { now: Date.now() })
   mock.store(on, saved)
   on('session.usage', () => ({ value: reading() }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('settings.read', () => ({ value: { model: 'opus', effortLevel: 'high' } }))
   on('session.version', () => ({ value: { version: '2.1.302' } }))
+  return clock
 }
 
 const mount = ($: Engine, props = HINT) =>
@@ -370,4 +371,92 @@ test('el letrero no sale si el panel es más estrecho que él', async ($, on) =>
   expect(await panel.find({ type: 'Text', text: /^▄█ ▄▄/ })).toBeUndefined()
   expect(await panel.find({ key: 'cost' })).toBeDefined()
   await panel.unmount()
+})
+
+test('el orden elegido cambia la posición de los tramos en la línea', async ($, on) => {
+  answerSession(on, FULL, { config: { order: ['five', 'week', 'model', 'ctx', 'cost'] } })
+  const ui = await mount($)
+
+  // 5h va primero: su detalle se abre en la columna 0.
+  const lefts = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute').map(b => b.props.left)
+  const line = '5h 42% 14:16 · wk 93% · Opus 5.5 · ctx 32% · $0.4'
+  expect(new Set(lefts)).toEqual(new Set([0, line.indexOf('wk'), line.indexOf('Opus'), line.indexOf('ctx')]))
+  await ui.unmount()
+})
+
+test('el interruptor «auto» de la línea enciende y apaga autocontinuar', async ($, on) => {
+  answerSession(on, FULL)
+  const ui = await mountAt($, 160)
+
+  const label = /^auto ●$/
+  expect((await text(ui, label))?.props.color).toBe('#9aa3b5')
+  await ui.press({ key: 'auto' })
+  await ui.redraw()
+  expect((await text(ui, label))?.props.color).toBe('#3ddc84')
+  await ui.unmount()
+})
+
+test('un estilo predefinido cambia los tramos de golpe', async ($, on) => {
+  answerSession(on, FULL)
+  const panel = await $.ui.mount({
+    plugin: 'usage-band',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'usage-band-config',
+    props: { title: 'usage-band', isFocused: true, bodyColumns: 120 } as RenderPropsOf['Pane'],
+  })
+  await panel.press({ key: 'preset-min' })
+  const line = await mountAt($, 120)
+  // Mínimo: solo la ventana de 5 h con su hora.
+  expect(await text(line, /^42%$/)).toBeDefined()
+  expect(await text(line, /^32%$/)).toBeUndefined()
+  expect(await text(line, /^\$0\.4$/)).toBeUndefined()
+  expect(await line.find({ key: 'model-name' })).toBeUndefined()
+  await line.unmount()
+  await panel.unmount()
+})
+
+test('al llegar al límite: diálogo para decidir y, con autocontinuar, sigue solo al reiniciarse', async ($, on) => {
+  const resetsAt = new Date(Date.now() + 60_000).toISOString()
+  const atLimit = usage([{ kind: 'five_hour', percentUsed: 100, resetsAt }], 32)
+  const clock = answerSession(on, () => atLimit)
+  const opened: string[] = []
+  on('ui.open', (_$, e) => {
+    opened.push(e.id)
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', () => ({ value: undefined }))
+  on('ui.notify', () => ({ value: { isSent: true, channel: 'terminal_bell' } }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  const sent: string[] = []
+  on('prompt.submit', (_$, e) => {
+    sent.push(e.text)
+    return { text: e.text }
+  })
+
+  await $.session.measure({
+    context: atLimit.context,
+    rateLimits: atLimit.rateLimits,
+    changed: ['rateLimits'],
+  } as Parameters<typeof $.session.measure>[0])
+  expect(opened).toContain('usage-band-limit')
+
+  // El diálogo explica el límite; «a» enciende autocontinuar.
+  const dialog = await $.ui.mount({
+    plugin: 'usage-band',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'usage-band-limit',
+    props: { title: 'Límite alcanzado', isFocused: true, bodyColumns: 100 } as RenderPropsOf['Pane'],
+  })
+  expect(await dialog.find({ type: 'Text', text: /Has llegado al límite de la ventana de 5 h/ })).toBeDefined()
+  await dialog.press({ key: 'auto-on' })
+  await dialog.unmount()
+
+  // La línea pone el temporizador; al reiniciarse (con su margen) envía el prompt.
+  const line = await mountAt($, 160)
+  expect(sent).toHaveLength(0)
+  await clock.advance(100_000)
+  expect(sent.some(t => /continúa con la tarea/.test(t))).toBe(true)
+  await line.unmount()
 })

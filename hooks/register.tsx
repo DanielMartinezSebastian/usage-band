@@ -1,7 +1,19 @@
 import type { Register, RenderChildren, SessionRateLimit, Timer } from 'claude-code'
 
 import { readConfig, STORE_KEY } from './config'
+import type { Segment } from './config'
 import type { DetailProps } from './detail-client'
+import {
+  CONTINUE_TEXT,
+  isPending,
+  LIMIT_PANE,
+  limits,
+  PENDING_KEY,
+  registerLimits,
+  RESUME_DELAY_MS,
+  whenText,
+  windowLabel,
+} from './limits'
 import { registerPanel } from './panel'
 import { PALETTE } from './palette'
 
@@ -153,6 +165,8 @@ const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined)
 export const register: Register = on => {
   // El comando /usage-band y su panel de configuración.
   registerPanel(on)
+  // Avisos, protección y el diálogo del límite.
+  registerLimits(on)
 
   // turn.step es un evento en streaming: el hook es un generador que reenvía.
   on('turn.step', async function* ($, e, next) {
@@ -173,6 +187,11 @@ export const register: Register = on => {
     $.ui.status(undefined)
     // La cuenta atrás de las tarjetas avanza aunque no haya turnos.
     $.clock.every(60_000, () => $.ui.invalidate('ui.render'))
+    // Un límite alcanzado en una sesión anterior que aún espera su reinicio:
+    // el render de la línea vuelve a poner su temporizador.
+    const pending = await $.store.get(PENDING_KEY)
+    limits.timer = undefined
+    limits.pending = isPending(pending) ? pending : undefined
     return next(e)
   })
 
@@ -187,8 +206,33 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('session.measure', ($, e, next) => {
+  // Cada medición: redibuja la línea y mira los límites. Pasado `alertAt`,
+  // un aviso; al 100 %, una notificación y el diálogo para decidir si
+  // autocontinuar. Una vez por ventana (por su hora de reinicio).
+  on('session.measure', async ($, e, next) => {
     $.ui.invalidate('ui.render')
+    if (!e.changed.includes('rateLimits')) return next(e)
+    const config = readConfig(await $.store.get(STORE_KEY))
+    for (const w of e.rateLimits) {
+      if ((w.kind !== 'five_hour' && w.kind !== 'seven_day') || !w.resetsAt) continue
+      const at = Date.parse(w.resetsAt)
+      const label = windowLabel(w.kind)
+      if (w.percentUsed >= 100) {
+        if (limits.hit.get(w.kind) === at) continue
+        limits.hit.set(w.kind, at)
+        limits.pending = { kind: w.kind, at }
+        await $.store.set(PENDING_KEY, limits.pending)
+        if (config.alert) {
+          void $.ui.notify(`Has llegado al límite de ${label}. Se reinicia ${whenText(at)}.`, { title: 'usage-band' })
+        }
+        await $.ui.open({ id: LIMIT_PANE, title: 'Límite alcanzado', focus: true, closeOnEscape: true })
+      } else if (config.alert && w.percentUsed >= config.alertAt && limits.alerted.get(w.kind) !== at) {
+        limits.alerted.set(w.kind, at)
+        void $.ui.notify(`Llevas un ${Math.round(w.percentUsed)} % de ${label}. Se reinicia ${whenText(at)}.`, {
+          title: 'usage-band',
+        })
+      }
+    }
     return next(e)
   })
 
@@ -263,6 +307,34 @@ export const register: Register = on => {
     const isCountdown = config.countdown && fiveLeft !== undefined && fiveLeft > 0 && fiveLeft <= COUNTDOWN_MS
     const isCounting = [...values.values()].some(v => v.isCounting)
 
+    // El temporizador del límite: salta al reiniciarse (con un margen), avisa
+    // de que se puede seguir y, con autocontinuar, envía el prompt.
+    const pending = limits.pending
+    if (!pending) {
+      limits.timer?.timer.cancel()
+      limits.timer = undefined
+    } else if (limits.timer?.at !== pending.at) {
+      limits.timer?.timer.cancel()
+      limits.timer = {
+        at: pending.at,
+        timer: $.clock.after(Math.max(pending.at - now, 0) + RESUME_DELAY_MS, async () => {
+          const latest = readConfig(await $.store.get(STORE_KEY))
+          limits.pending = undefined
+          limits.timer = undefined
+          await $.store.delete(PENDING_KEY)
+          await $.ui.close({ id: LIMIT_PANE })
+          if (latest.alert || latest.autoContinue) {
+            const what = latest.autoContinue ? ': sigo con la tarea.' : '.'
+            void $.ui.notify(`Ya puedes seguir: ${windowLabel(pending.kind)} se ha reiniciado${what}`, {
+              title: 'usage-band',
+            })
+          }
+          if (latest.autoContinue) await $.prompt.submit({ text: CONTINUE_TEXT })
+          $.ui.invalidate('ui.render')
+        }),
+      }
+    }
+
     // El reloj más lento que aún mueve todas las animaciones en curso.
     const tickMs = isCounting ? 100 : isPulsing ? PULSE_MS : isCountdown || isFlashing ? 1000 : undefined
     if (ticker?.ms !== tickMs) {
@@ -273,7 +345,7 @@ export const register: Register = on => {
     // Client solo existe en la terminal y el escritorio, las superficies que
     // dibujan esta línea.
     if (e.surface === 'vscode' || e.surface === 'mobile') return next(e)
-    const { Box, Text, Client } = $.ui.resolve(e)
+    const { Box, Text, Client, Button } = $.ui.resolve(e)
     // El ancho de la fila: el medido si lo hay (descuenta el indicador de
     // Claude Code), si no el de la terminal.
     const columns = e.viewport ? Math.min(measured ?? e.viewport.columns, e.viewport.columns) : undefined
@@ -303,29 +375,41 @@ export const register: Register = on => {
     const fullName = modelName(model)
     const shortName = fullName.split(' ')[0] ?? fullName
     const costText = `$${r1(cost?.usd ?? 0)}`
-    type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean }
+    const AUTO = 'auto ●'
+    type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean; auto: boolean }
     // Lo que se quitó en /usage-band no está en ningún nivel.
     const layouts: Layout[] = (
       [
-        { name: fullName, ctx: true, cost: true, week: true },
-        { name: fullName, ctx: true, cost: false, week: true },
-        { name: shortName, ctx: true, cost: false, week: true },
-        { name: shortName, ctx: true, cost: false, week: false },
-        { name: shortName, ctx: false, cost: false, week: false },
-        { ctx: false, cost: false, week: false },
+        { name: fullName, ctx: true, cost: true, week: true, auto: true },
+        { name: fullName, ctx: true, cost: false, week: true, auto: true },
+        { name: shortName, ctx: true, cost: false, week: true, auto: false },
+        { name: shortName, ctx: true, cost: false, week: false, auto: false },
+        { name: shortName, ctx: false, cost: false, week: false, auto: false },
+        { ctx: false, cost: false, week: false, auto: false },
       ] as Layout[]
-    ).map(l => ({ ...l, name: config.model ? l.name : undefined, cost: l.cost && config.cost }))
+    ).map(l => ({
+      ...l,
+      name: config.model ? l.name : undefined,
+      cost: l.cost && config.cost,
+      auto: l.auto && config.auto,
+    }))
     const metricWidth = (m: Metric) => m.label.length + 1 + pctText(m).length + (inline(m)?.text.length ?? 0)
-    // Los tramos de la línea en orden, con su ancho; la métrica, si lo es.
-    const pieces = (l: Layout) =>
-      [
-        l.name !== undefined ? { width: [...l.name].length } : null,
-        l.ctx && ctx ? { width: metricWidth(ctx), metric: ctx } : null,
-        l.cost ? { width: costText.length } : null,
-        five ? { width: metricWidth(five), metric: five } : null,
-        isFlashing && !five ? { width: '5h ventana nueva'.length } : null,
-        l.week && week ? { width: metricWidth(week), metric: week } : null,
-      ].filter((p): p is { width: number; metric?: Metric } => p !== null)
+
+    // Los tramos de la línea, en el orden elegido en /usage-band, con su ancho;
+    // la métrica, si lo es. El interruptor de autocontinuar va al final.
+    type LinePiece = { key: string; width: number; metric?: Metric }
+    const pieceOf = (segment: Segment, l: Layout): LinePiece[] => {
+      if (segment === 'model') return l.name !== undefined ? [{ key: 'model', width: [...l.name].length }] : []
+      if (segment === 'ctx') return l.ctx && ctx ? [{ key: 'ctx', width: metricWidth(ctx), metric: ctx }] : []
+      if (segment === 'cost') return l.cost ? [{ key: 'cost', width: costText.length }] : []
+      if (segment === 'week') return l.week && week ? [{ key: 'week', width: metricWidth(week), metric: week }] : []
+      if (five) return [{ key: 'five', width: metricWidth(five), metric: five }]
+      return isFlashing ? [{ key: 'flash', width: '5h ventana nueva'.length }] : []
+    }
+    const pieces = (l: Layout): LinePiece[] => [
+      ...config.order.flatMap(segment => pieceOf(segment, l)),
+      ...(l.auto ? [{ key: 'auto', width: AUTO.length }] : []),
+    ]
     const lineWidth = (l: Layout) => {
       const ps = pieces(l)
       return ps.reduce((n, p) => n + p.width, 0) + SEP * Math.max(ps.length - 1, 0)
@@ -342,7 +426,7 @@ export const register: Register = on => {
     let x = 0
     pieces(layout).forEach((p, i) => {
       if (i > 0) x += SEP
-      if (p.metric) labelAt.set(p.metric.key, x)
+      labelAt.set(p.metric?.key ?? p.key, x)
       x += p.width
     })
 
@@ -477,7 +561,7 @@ export const register: Register = on => {
       }
     }
 
-    const modelPlan = plan(0, [...fullName].length, modelDetails, false)
+    const modelPlan = plan(labelAt.get('model') ?? 0, [...fullName].length, modelDetails, false)
     const layers: Layer[] = [
       ...metrics.filter(m => labelAt.has(m.key)).map(metricLayer),
       ...(layout.name !== undefined
@@ -485,12 +569,53 @@ export const register: Register = on => {
         : []),
     ]
 
-    // Si cada tramo es el primero de la línea (sin separador delante).
-    let isFirst = true
-    const lead = () => {
-      const wasFirst = isFirst
-      isFirst = false
-      return wasFirst
+    // El interruptor de autocontinuar: un clic lo enciende o lo apaga.
+    const toggleAuto = async () => {
+      await $.store.set(STORE_KEY, { ...config, autoContinue: !config.autoContinue })
+      $.ui.toast(config.autoContinue ? 'Autocontinuar apagado' : 'Autocontinuar encendido: seguirá solo al reiniciarse el límite')
+      $.ui.invalidate('ui.render')
+    }
+
+    // Cada tramo de la línea; `isFirst` no lleva separador delante.
+    const draw = (p: LinePiece, isFirst: boolean) => {
+      if (p.metric) return segment(p.metric, isFirst)
+      const lead = isFirst ? null : sep
+      if (p.key === 'model') {
+        return (
+          <Box hover={{ scope: 'model' }} flexShrink={0}>
+            {lead}
+            <Client
+              key="model-name"
+              module="./shimmer-client.tsx"
+              props={{ text: layout.name ?? '', color: PALETTE.acc2, isWorking: config.shimmer && e.props.isWorking }}
+            />
+          </Box>
+        )
+      }
+      if (p.key === 'cost') {
+        return (
+          <Text>
+            {lead}
+            <Text color={PALETTE.fg}>{costText}</Text>
+          </Text>
+        )
+      }
+      if (p.key === 'flash') {
+        return (
+          <Text>
+            {lead}
+            <Text bold color={PALETTE.ok}>5h ventana nueva</Text>
+          </Text>
+        )
+      }
+      return (
+        <Box flexDirection="row" flexShrink={0}>
+          {lead}
+          <Button key="auto" plain onPress={toggleAuto}>
+            <Text color={config.autoContinue ? PALETTE.ok : PALETTE.mut}>{AUTO}</Text>
+          </Button>
+        </Box>
+      )
     }
 
     return (
@@ -499,30 +624,7 @@ export const register: Register = on => {
         <Box position="absolute" top={0} left={0} width="100%">
           <Client key="measure" module="./measure-client.tsx" props={null} width="100%" />
         </Box>
-        {layout.name !== undefined && lead() ? (
-          <Box hover={{ scope: 'model' }} flexShrink={0}>
-            <Client
-              key="model-name"
-              module="./shimmer-client.tsx"
-              props={{ text: layout.name, color: PALETTE.acc2, isWorking: config.shimmer && e.props.isWorking }}
-            />
-          </Box>
-        ) : null}
-        {layout.ctx && ctx ? segment(ctx, lead()) : null}
-        {layout.cost ? (
-          <Text>
-            {lead() ? null : sep}
-            <Text color={PALETTE.fg}>{costText}</Text>
-          </Text>
-        ) : null}
-        {five ? segment(five, lead()) : null}
-        {isFlashing && !five ? (
-          <Text>
-            {lead() ? null : sep}
-            <Text bold color={PALETTE.ok}>5h ventana nueva</Text>
-          </Text>
-        ) : null}
-        {layout.week && week ? segment(week, lead()) : null}
+        {pieces(layout).map((p, i) => draw(p, i === 0))}
         {layers.map(exitLayer)}
         {layers.map(hoverLayer)}
         {hasBrand ? (
