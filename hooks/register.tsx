@@ -1,5 +1,7 @@
 import type { Register, RenderChildren, SessionRateLimit, Timer } from 'claude-code'
 
+import { agentsRunning, registerAgents, resetAgents } from './agents'
+import { branchState, branchText, readBranch, registerBranch } from './branch'
 import { readConfig, STORE_KEY } from './config'
 import type { Segment } from './config'
 import type { DetailProps } from './detail-client'
@@ -167,6 +169,10 @@ export const register: Register = on => {
   registerPanel(on)
   // Avisos, protección y el diálogo del límite.
   registerLimits(on)
+  // La rama git, junto a la marca.
+  registerBranch(on)
+  // Los subagentes en marcha, que colorean la marca.
+  registerAgents(on)
 
   // turn.step es un evento en streaming: el hook es un generador que reenvía.
   on('turn.step', async function* ($, e, next) {
@@ -182,11 +188,16 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'usage-band', description: 'Personaliza la línea de uso bajo el prompt' })
     ticker = undefined
+    resetAgents()
     // Borra el aviso fijado bajo el prompt que dejó un diagnóstico anterior:
     // un $.ui.status se queda hasta que el mod lo quita.
     $.ui.status(undefined)
     // La cuenta atrás de las tarjetas avanza aunque no haya turnos.
-    $.clock.every(60_000, () => $.ui.invalidate('ui.render'))
+    $.clock.every(60_000, () => {
+      void readBranch(argv => $.process.run(argv)).finally(() => $.ui.invalidate('ui.render'))
+    })
+    // La rama se lee sin hacer esperar al arranque.
+    void readBranch(argv => $.process.run(argv)).then(changed => changed && $.ui.invalidate('ui.render'))
     // Un límite alcanzado en una sesión anterior que aún espera su reinicio:
     // el render de la línea vuelve a poner su temporizador.
     const pending = await $.store.get(PENDING_KEY)
@@ -430,7 +441,19 @@ export const register: Register = on => {
       columns === undefined ? layouts[0]! : (layouts.find(l => lineWidth(l) <= columns) ?? layouts[layouts.length - 1]!)
     // La marca ocupa las últimas columnas si tras la línea queda sitio.
     const BRAND = 3
+    // Con subagentes en marcha, los corchetes de la marca cambian de color.
+    const hasAgents = agentsRunning() > 0
     const hasBrand = config.brand && columns !== undefined && columns - lineWidth(layout) >= BRAND + 1
+    // La rama, a la izquierda de la marca (o al final, sin ella), si también
+    // cabe; si no, la marca se queda sola.
+    const branch = branchState.name !== undefined ? branchText(branchState.name) : undefined
+    const branchWidth = branch !== undefined ? [...branch].length : 0
+    const hasBranch =
+      branch !== undefined &&
+      columns !== undefined &&
+      columns - lineWidth(layout) >= branchWidth + 1 + (hasBrand ? BRAND + 1 : 0)
+    // Lo que ocupa el final de la fila: rama y marca, con un espacio entre ellas.
+    const tail = (hasBrand ? BRAND : 0) + (hasBranch ? branchWidth + (hasBrand ? 1 : 0) : 0)
 
     // Columna donde empieza la etiqueta de cada métrica visible: el detalle se
     // abre ahí, hacia la derecha.
@@ -469,8 +492,9 @@ export const register: Register = on => {
 
     // Sin color de fondo: la capa tapa lo de debajo pintando cada celda (el
     // Client del detalle rellena con espacios hasta el final de la fila).
-    // Los detalles acaban antes de la marca (y su separación), que siempre se ve.
-    const detailEnd = columns !== undefined && hasBrand ? columns - BRAND - 1 : columns
+    // Los detalles acaban antes de la rama y la marca (y su separación), que
+    // siempre se ven.
+    const detailEnd = columns !== undefined && tail > 0 ? columns - tail - 1 : columns
     const overlayWidth = (left: number) => (detailEnd !== undefined ? Math.max(detailEnd - left, 1) : undefined)
 
     const overlay = (scope: string, left: number, children: RenderChildren[]) => (
@@ -643,15 +667,23 @@ export const register: Register = on => {
         {pieces(layout).map((p, i) => draw(p, i === 0))}
         {layers.map(exitLayer)}
         {layers.map(hoverLayer)}
+        {hasBranch ? (
+          <Box key="branch" position="absolute" top={0} left={columns! - tail} width={branchWidth}>
+            <Text>
+              <Text color={PALETTE.mut}>{branch!.slice(0, 2)}</Text>
+              <Text color={PALETTE.fg}>{branch!.slice(2)}</Text>
+            </Text>
+          </Box>
+        ) : null}
         {hasBrand ? (
           // La marca, en las últimas columnas y al final del árbol para que
           // ningún detalle ni barrido la tape: gira mientras Claude trabaja;
           // encima, una copia oculta que el hover revela y que gira mientras
           // se ve, para que también gire al pasar el ratón.
           <Box position="absolute" top={0} left={columns! - BRAND} width={BRAND} hover={{ scope: 'brand' }}>
-            <Client key="brand" module="./brand-client.tsx" props={{ spin: config.spin && e.props.isWorking }} />
+            <Client key="brand" module="./brand-client.tsx" props={{ spin: config.spin && e.props.isWorking, agents: config.spin && hasAgents }} />
             <Box display="none" hover={{ display: 'flex', scope: 'brand' }} position="absolute" top={0} left={0}>
-              <Client key="brand-hover" module="./brand-client.tsx" props={{ spin: config.spin }} />
+              <Client key="brand-hover" module="./brand-client.tsx" props={{ spin: config.spin, agents: config.spin && hasAgents }} />
             </Box>
           </Box>
         ) : null}

@@ -517,3 +517,76 @@ test('con el límite alcanzado y el piloto apagado, su «off» se queda en rojo 
   }
   await ui.unmount()
 })
+
+test('la rama git del entorno va a la izquierda de la marca y los detalles acaban antes', async ($, on) => {
+  answerSession(on, FULL)
+  const calls: string[][] = []
+  on('process.run', (_$, e) => {
+    calls.push([...e.argv])
+    return { value: { exitCode: 0, stdout: 'feature/rama\n', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('classic.CwdChanged', () => ({}))
+  const ui = await mountAt($, 120)
+  await $.classic.CwdChanged({ old_cwd: 'C:/', new_cwd: 'C:/repo' })
+  await ui.advance(10)
+
+  expect(calls[0]).toEqual(['git', 'branch', '--show-current'])
+  expect(await text(ui, /^feature\/rama$/)).toBeDefined()
+  // «⎇ feature/rama» (14) termina una columna antes de la marca (117).
+  const branch = await ui.find({ key: 'branch' })
+  expect(branch?.props.left).toBe(120 - 3 - 1 - 14)
+  const boxes = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute')
+  for (const b of boxes) {
+    if (b === branch || b.props.width === 3 || b.props.width === '100%' || b.props.key === 'branch') continue
+    if (typeof b.props.width === 'number') expect(Number(b.props.left) + b.props.width).toBeLessThanOrEqual(101)
+  }
+  await ui.unmount()
+})
+
+test('fuera de un repo git no hay rama', async ($, on) => {
+  answerSession(on, FULL)
+  on('process.run', () => ({ value: { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('classic.CwdChanged', () => ({}))
+  const ui = await mountAt($, 120)
+  await $.classic.CwdChanged({ old_cwd: 'C:/', new_cwd: 'C:/tmp' })
+  await ui.advance(10)
+  expect(await ui.find({ key: 'branch' })).toBeUndefined()
+  expect(await ui.find({ key: 'brand' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('con subagentes en marcha los corchetes cambian de color y el interior solo gira si la principal trabaja', async ($, on) => {
+  answerSession(on, FULL)
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  const glyph = /^[/\|-]$/
+  const bracket = async () => (await text(ui, /^<$/, 'brand'))?.props.color
+  const ui = await mountAt($, 120)
+  expect(await bracket()).toBe('#e8ecf4')
+
+  // Un subagente en segundo plano: los corchetes recorren el degradado, el
+  // interior sigue vacío.
+  await $.turn.start({ text: 'busca', turnId: 'sub-1', agentId: 'agent-1' })
+  await ui.redraw(HINT)
+  const colors = new Set<string>()
+  for (let i = 0; i < 4; i++) {
+    colors.add(String(await bracket()))
+    await ui.advance(240)
+  }
+  expect(colors.size).toBeGreaterThan(1)
+  expect(colors.has('#e8ecf4')).toBe(false)
+  expect(await text(ui, /^ $/, 'brand')).toBeDefined()
+  expect(await text(ui, glyph, 'brand')).toBeUndefined()
+
+  // La principal además trabaja: también gira el interior.
+  await ui.redraw({ ...HINT, isWorking: true })
+  const before = (await text(ui, glyph, 'brand'))?.text
+  await ui.advance(80)
+  expect((await text(ui, glyph, 'brand'))?.text).not.toBe(before)
+
+  // El subagente acaba: los corchetes vuelven a su color.
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 'sub-1', agentId: 'agent-1', reason: 'answer' })
+  await ui.redraw(HINT)
+  expect(await bracket()).toBe('#e8ecf4')
+  await ui.unmount()
+})

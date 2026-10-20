@@ -1,5 +1,6 @@
 import type { On, Timer } from 'claude-code'
 
+import { agentTurnEnded } from './agents'
 import { readConfig, STORE_KEY } from './config'
 import { PALETTE } from './palette'
 
@@ -83,6 +84,8 @@ export const registerLimits = (on: On) => {
 
   // Contexto: compactar al terminar un turno pasado el umbral.
   on('turn.complete', async ($, e, next) => {
+    // Un subagente que acaba (agents.ts): la marca recupera su color.
+    if (agentTurnEnded(e)) $.ui.invalidate('ui.render')
     const result = await next(e)
     if (e.agentId || e.reason !== 'answer') return result
     const config = readConfig(await $.store.get(STORE_KEY))
