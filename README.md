@@ -108,8 +108,11 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 8. Avisos, protección, piloto automático con diálogo e interruptor en la línea, estilos predefinidos y orden de los tramos.
 9. Letrero «usage band» en la cabecera del panel.
 10. Interruptor del piloto: se llama «piloto automático», va pegado tras la hora de la ventana de 5 h como `⟳ on` / `⊘ off` (verde / gris), parpadea al esperar el reinicio con el piloto encendido y se queda en rojo si el límite llega con él apagado. Verificado en la terminal: el clic en un botón de la línea funciona.
+11. Rama git del entorno (`⎇ rama`) a la izquierda de la marca, solo si cabe; se actualiza al empezar, tras cada Bash, al cambiar de directorio y cada minuto.
+12. Subagentes: con alguno en marcha los corchetes `< >` cambian de color sin animar el interior; la barra gira solo si la sesión principal trabaja.
 
 **Ideas pendientes**
+- **Por valorar:** uso con muchas sesiones a la vez (avisos repetidos, piloto compartido, lecturas viejas): ver [docs/pendiente-multisesion.md](docs/pendiente-multisesion.md).
 - Resumen grande en el panel (barras de la ventana de 5 h, la semana y el contexto, con minigráfica del consumo).
 - Sonido con los avisos (necesita incluir un archivo de audio en el mod).
 - Historial de consumo entre sesiones.
@@ -125,8 +128,10 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 | `hooks/config.ts` | Opciones, valores por defecto, estilos y validación de lo guardado |
 | `hooks/palette.ts` · `hooks/banner.ts` | Colores corporativos y letrero |
 | `hooks/detail-client.tsx` | Detalle del hover: barrido de entrada y salida, barra, rotación |
+| `hooks/branch.ts` | Rama git del entorno, junto a la marca |
+| `hooks/agents.ts` | Subagentes en marcha, que colorean la marca |
 | `hooks/brand-client.tsx` · `shimmer-client.tsx` · `measure-client.tsx` | Marca `< >`, brillo del modelo y medición del ancho real de la fila |
-| `tests/band.test.tsx` | 26 tests (`claude plugin test`) |
+| `tests/band.test.tsx` | 29 tests (`claude plugin test`) |
 
 ## Desarrollo
 
