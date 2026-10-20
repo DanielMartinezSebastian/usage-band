@@ -29,8 +29,8 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 ## Estado (2026-10-20)
 
 **Línea**
-- Modelo (magenta), `ctx` %, coste (cian), `5h` % + hora de reinicio (tenue), `wk` %.
-- Colores corporativos (`hooks/palette.ts`, tema oscuro del kit trama-ui de la web): modelo en acento secundario `#c084fc`, etiquetas en acento `#7cc4ff`, coste en texto `#e8ecf4`, separadores, horas y detalles en secundario `#9aa3b5`; brillo del modelo en `#e8ecf4`.
+- Modelo, `ctx` %, importe, `5h` % + hora de reinicio, `wk` % y, al final a la derecha, la marca `< >`.
+- Colores corporativos (`hooks/palette.ts`, tema oscuro del kit trama-ui de la web): modelo en acento secundario `#c084fc`, etiquetas en acento `#7cc4ff`, importe en texto `#e8ecf4`, separadores, horas y detalles en secundario `#9aa3b5`.
 - Umbrales con los estados del kit: `#3ddc84` / `#ffb020` / `#ff5470` (límites a 70/90 %, contexto a 50/80 %); cuenta atrás en `#ffb020`, "ventana nueva" en `#3ddc84`.
 
 **Hover** (CSS de la superficie: `hover` + `scope`, capa `position: absolute` de una fila)
@@ -62,8 +62,21 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 
 - La línea bajo el prompt solo deja dibujar en su propia fila: lo que sale de ella se corta.
 - Un `Client` no recibe hover en la terminal del usuario (solo clics), pero su reloj `surface.every` sí funciona. Por eso el hover es CSS y los Clients solo animan.
-- Delante de la línea Claude Code pinta su indicador de modo (`⏵⏵ auto mode on`), que no llega en las props y no cabe en `viewport.columns`. El ancho real lo mide la marca: una capa `position: absolute` de toda la fila con un Client que envía `surface.columns` por `post` → `ui.message`. La fila va con `height={1}` para que nada salte a una segunda línea.
-- El hover CSS no avisa al mod; un Client oculto sí se vuelve a dibujar al revelarse (cambio de tamaño).
+- Delante de la línea Claude Code pinta su indicador de modo (`⏵⏵ auto mode on`), que no llega en las props y no cabe en `viewport.columns`. El ancho real lo mide `measure-client.tsx`: una capa `position: absolute` de toda la fila con un Client que envía `surface.columns` por `post` → `ui.message`. La fila va con `height={1}` para que nada salte a una segunda línea.
+- El hover CSS no avisa al mod; un Client oculto sí se vuelve a dibujar al revelarse (cambio de tamaño). Con eso se animan la entrada de los detalles y la marca al pasar el ratón.
+- La superficie oculta un detalle al instante cuando el puntero se va; para animar la salida, una capa siempre visible recibe lo que se veía por estado compartido entre instancias del mismo módulo de Client.
+- Un `$.ui.status(...)` queda fijado bajo el prompt hasta que el mod llama `$.ui.status(undefined)`; el mod lo borra en `session.start` por si quedó uno de un diagnóstico.
+- El kit de tests (`claude plugin test`) monta componentes, simula el ratón (`pointer`), el tamaño de un Client (`resize`), su reloj (`advance`) y los eventos del motor (`$.turn.start`, `$.turn.complete`), pero no pinta: el hover CSS y el aspecto final solo se comprueban en la terminal.
+
+## Progreso
+
+1. statusLine de shell con uso de plan y hora de reinicio (`~/bin/claude-statusline.sh`), luego sustituido por este mod.
+2. Banda sobre el prompt (descartada) → línea bajo el prompt (`PromptHint`) con el mismo diseño.
+3. Hover por métrica, detalles anclados en su etiqueta, responsive de la línea y de los detalles.
+4. Animaciones: conteo, pulso, cuenta atrás, barra que se llena, barrido de entrada y de salida.
+5. Colores corporativos y marca `< >` que gira al pensar y al pasar el ratón.
+6. Probado y quitado: banda sobre el prompt, Client para el hover (no recibe el ratón en esta terminal), cursor en el barrido, brillo del modelo (apagado), detalle del importe.
+7. Siguiente: comando `/usage-band` con un panel de configuración para personalizar la línea.
 - `$` no se puede guardar en una variable; `turn.step` exige `async function*` con `return yield* next(e)`.
 
 ## Desarrollo
