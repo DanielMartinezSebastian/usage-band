@@ -375,8 +375,9 @@ export const register: Register = on => {
     const fullName = modelName(model)
     const shortName = fullName.split(' ')[0] ?? fullName
     const costText = `$${r1(cost?.usd ?? 0)}`
-    // El interruptor del piloto automático: un punto y «on» u «off».
-    const AUTO = config.autoContinue ? '● on' : '● off'
+    // El interruptor del piloto automático: un bucle encendido, una señal de
+    // prohibido apagado.
+    const AUTO = config.autoContinue ? '⟳ on' : '⊘ off'
     type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean; auto: boolean }
     // Lo que se quitó en /usage-band no está en ningún nivel.
     const layouts: Layout[] = (
