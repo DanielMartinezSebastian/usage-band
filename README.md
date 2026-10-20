@@ -50,7 +50,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 ## Marca martinezsebastian
 
-`brand-client.tsx` dibuja al final de la línea los corchetes `< >` del logo de la web con un glifo dentro que se transforma como el spinner de Claude Code: formas de estrella `· ✢ ✳ ✶ ✻ ✽` que van y vuelven, cada fotograma (120 ms) sustituyendo al anterior en la misma celda, con el color recorriendo el degradado de acento (#7cc4ff → #c084fc). Solo se anima mientras Claude trabaja; en reposo se queda quieta en `✻` (#c084fc) y no redibuja. Se oculta con `SHOW_BRAND = false` en `register.tsx` (la capa sigue midiendo el ancho).
+`brand-client.tsx` dibuja al final de la línea los corchetes `< >` del logo de la web con una barra que gira dentro (`/ - \ |`, 80 ms por fotograma) y cambia de color recorriendo el degradado de acento (#7cc4ff → #c084fc). Gira siempre, también en reposo. Se oculta con `SHOW_BRAND = false` en `register.tsx` (la capa sigue midiendo el ancho).
 
 La técnica de Claude Code (investigada, su código no es público): no es una imagen, son caracteres sustituidos en la misma celda a intervalo fijo, con una secuencia de fotogramas fija en el código; el `✻` recuerda al logo de Anthropic, por eso parece que el logo "respira".
 

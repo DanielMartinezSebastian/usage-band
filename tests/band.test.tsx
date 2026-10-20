@@ -201,30 +201,23 @@ test('responsive: a media anchura el detalle usa sus textos cortos en vez de cor
   await ui.unmount()
 })
 
-test('la marca: quieta en reposo, se transforma como el spinner de Claude al trabajar', async ($, on) => {
+test('la marca: una barra que gira dentro de < > cambiando de color', async ($, on) => {
   answerSession(on, FULL)
-  const idle = await mountAt($, 120)
-  await idle.resize({ columns: 120, rows: 1, in: 'brand' })
-  const still = await text(idle, /^✻$/, 'brand')
-  expect(still?.props.color).toBe('#c084fc')
-  await idle.advance(1000)
-  expect(await text(idle, /^✻$/, 'brand')).toBeDefined()
-  await idle.unmount()
-
-  const working = await mountAt($, 120)
-  await working.redraw({ ...HINT, isWorking: true })
-  await working.resize({ columns: 120, rows: 1, in: 'brand' })
+  const ui = await mountAt($, 120)
+  await ui.resize({ columns: 120, rows: 1, in: 'brand' })
+  const glyph = /^[/\\|-]$/
+  expect((await text(ui, glyph, 'brand'))?.props.color).toBe('#7cc4ff')
   const seen = new Set<string>()
-  for (let i = 0; i < 10; i++) {
-    seen.add((await text(working, /^[·✢✳✶✻✽]$/, 'brand'))?.text ?? '')
-    await working.advance(120)
+  for (let i = 0; i < 4; i++) {
+    seen.add((await text(ui, glyph, 'brand'))?.text ?? '')
+    await ui.advance(80)
   }
-  // Recorre toda la secuencia de formas.
-  expect([...seen].sort()).toEqual(['·', '✢', '✳', '✶', '✻', '✽'].sort())
+  expect([...seen].sort()).toEqual(['-', '/', '\\', '|'].sort())
+  expect((await text(ui, glyph, 'brand'))?.props.color).not.toBe('#7cc4ff')
   // Sin sitio tras la línea (49) no se pinta.
-  await working.resize({ columns: 51, rows: 1, in: 'brand' })
-  expect(await text(working, /^[·✢✳✶✻✽]$/, 'brand')).toBeUndefined()
-  await working.unmount()
+  await ui.resize({ columns: 51, rows: 1, in: 'brand' })
+  expect(await text(ui, glyph, 'brand')).toBeUndefined()
+  await ui.unmount()
 })
 
 test('el ancho medido por la marca (sin el indicador de Claude Code) ajusta la línea', async ($, on) => {
