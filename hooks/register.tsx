@@ -112,11 +112,11 @@ let flashUntil = 0
 
 // El ancho real de la fila. Claude Code pinta delante su propio indicador
 // (`⏵⏵ auto mode on`, que cambia con el modo) y no dice cuánto mide, así que
-// lo mide la marca, una capa que ocupa la fila entera.
+// lo mide una capa invisible que ocupa la fila entera (measure-client.tsx).
 let measured: number | undefined
 
-// La marca martinezsebastian al final de la línea (brand-client.tsx). Con
-// false la capa sigue midiendo el ancho real, pero no se pinta.
+// La marca martinezsebastian al final de la línea (brand-client.tsx); false
+// la quita.
 const SHOW_BRAND = true
 
 // El reloj rápido solo corre mientras alguna animación lo necesita.
@@ -168,7 +168,7 @@ export const register: Register = on => {
 
   on('ui.message', ($, e, next) => {
     const width = (e.data as { width?: unknown } | null)?.width
-    if (e.element === 'brand' && typeof width === 'number') {
+    if (e.element === 'measure' && typeof width === 'number') {
       if (width !== measured) {
         measured = width
         $.ui.invalidate('ui.render')
@@ -310,6 +310,10 @@ export const register: Register = on => {
     }
     const layout =
       columns === undefined ? layouts[0]! : (layouts.find(l => lineWidth(l) <= columns) ?? layouts[layouts.length - 1]!)
+    // La marca ocupa las últimas columnas si tras la línea queda sitio.
+    const BRAND = 3
+    const hasBrand = SHOW_BRAND && columns !== undefined && columns - lineWidth(layout) >= BRAND + 1
+
     // Columna donde empieza la etiqueta de cada métrica visible: el detalle se
     // abre ahí, hacia la derecha.
     const labelAt = new Map<string, number>()
@@ -462,15 +466,9 @@ export const register: Register = on => {
 
     return (
       <Box key="usage" flexDirection="row" width="100%" height={1} overflow="hidden">
-        {/* La marca: una capa de toda la fila, debajo de lo demás, que mide el
-            ancho real y, si SHOW_BRAND, se pinta a la derecha si queda sitio. */}
+        {/* Capa invisible de toda la fila que mide su ancho real. */}
         <Box position="absolute" top={0} left={0} width="100%">
-          <Client
-            key="brand"
-            module="./brand-client.tsx"
-            props={{ isWorking: e.props.isWorking, lineWidth: lineWidth(layout), show: SHOW_BRAND }}
-            width="100%"
-          />
+          <Client key="measure" module="./measure-client.tsx" props={null} width="100%" />
         </Box>
         {layout.name !== undefined && lead() ? (
           <Box hover={{ scope: 'model' }} flexShrink={0}>
@@ -496,6 +494,17 @@ export const register: Register = on => {
           </Text>
         ) : null}
         {layout.week && week ? segment(week, lead()) : null}
+        {hasBrand ? (
+          // La marca, en las últimas columnas: gira mientras Claude trabaja;
+          // encima, una copia oculta que el hover revela y que gira mientras
+          // se ve, para que también gire al pasar el ratón.
+          <Box position="absolute" top={0} left={columns! - BRAND} width={BRAND} hover={{ scope: 'brand' }}>
+            <Client key="brand" module="./brand-client.tsx" props={{ spin: e.props.isWorking }} />
+            <Box display="none" hover={{ display: 'flex', scope: 'brand' }} position="absolute" top={0} left={0}>
+              <Client key="brand-hover" module="./brand-client.tsx" props={{ spin: true }} />
+            </Box>
+          </Box>
+        ) : null}
         {visible.map(detail)}
         {modelDetail}
       </Box>

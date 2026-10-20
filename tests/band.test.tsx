@@ -74,7 +74,7 @@ test('cada detalle se abre desde la etiqueta de su métrica, hacia la derecha', 
   const line = 'Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 · wk 93%'
   const layers = await ui.findAll({ type: 'Box' })
   const lefts = layers.filter(b => b.props.position === 'absolute').map(b => b.props.left)
-  // La capa de la marca y la del modelo empiezan en 0.
+  // La capa de medición y la del modelo empiezan en 0.
   expect(lefts.sort((a, b) => Number(a) - Number(b))).toEqual([
     0,
     0,
@@ -201,31 +201,53 @@ test('responsive: a media anchura el detalle usa sus textos cortos en vez de cor
   await ui.unmount()
 })
 
-test('la marca: una barra que gira dentro de < > cambiando de color', async ($, on) => {
+test('la marca: quieta en reposo, gira mientras Claude trabaja y al pasar el ratón', async ($, on) => {
   answerSession(on, FULL)
-  const ui = await mountAt($, 120)
-  await ui.resize({ columns: 120, rows: 1, in: 'brand' })
   const glyph = /^[/\\|-]$/
-  expect((await text(ui, glyph, 'brand'))?.props.color).toBe('#7cc4ff')
+  const ui = await mountAt($, 120)
+  // La copia del hover está oculta (sin columnas) hasta que el puntero la revela.
+  await ui.resize({ columns: 0, rows: 0, in: 'brand-hover' })
+
+  // En reposo: quietas las dos.
+  expect((await text(ui, glyph, 'brand'))?.text).toBe('/')
+  const hidden = (await text(ui, glyph, 'brand-hover'))?.text
+  await ui.advance(400)
+  expect((await text(ui, glyph, 'brand'))?.text).toBe('/')
+  expect((await text(ui, glyph, 'brand-hover'))?.text).toBe(hidden)
+
+  // Hover: revelada, la copia gira.
+  await ui.resize({ columns: 3, rows: 1, in: 'brand-hover' })
   const seen = new Set<string>()
   for (let i = 0; i < 4; i++) {
-    seen.add((await text(ui, glyph, 'brand'))?.text ?? '')
+    seen.add((await text(ui, glyph, 'brand-hover'))?.text ?? '')
     await ui.advance(80)
   }
   expect([...seen].sort()).toEqual(['-', '/', '\\', '|'].sort())
-  expect((await text(ui, glyph, 'brand'))?.props.color).not.toBe('#7cc4ff')
-  // Sin sitio tras la línea (49) no se pinta.
-  await ui.resize({ columns: 51, rows: 1, in: 'brand' })
-  expect(await text(ui, glyph, 'brand')).toBeUndefined()
+
+  // Trabajando: la de la línea gira y cambia de color.
+  await ui.redraw({ ...HINT, isWorking: true })
+  const before = await text(ui, glyph, 'brand')
+  await ui.advance(240)
+  const after = await text(ui, glyph, 'brand')
+  expect(after?.text).not.toBe(before?.text)
+  expect(after?.props.color).not.toBe('#c084fc')
   await ui.unmount()
 })
 
-test('el ancho medido por la marca (sin el indicador de Claude Code) ajusta la línea', async ($, on) => {
+test('la marca no se pinta si tras la línea no queda sitio', async ($, on) => {
+  answerSession(on, FULL)
+  // La línea mide 49: a 51 columnas no caben la marca y su separación.
+  const ui = await mountAt($, 51)
+  expect(await ui.find({ key: 'brand' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('el ancho medido (sin el indicador de Claude Code) ajusta la línea', async ($, on) => {
   answerSession(on, FULL)
   // La terminal mide 176, pero delante va el indicador del modo: quedan 40.
   const ui = await mountAt($, 176)
   expect(await text(ui, /^\$0\.4$/)).toBeDefined()
-  await ui.resize({ columns: 40, rows: 1, in: 'brand' })
+  await ui.resize({ columns: 40, rows: 1, in: 'measure' })
   expect(await text(ui, /^\$0\.4$/)).toBeUndefined()
   expect(await text(ui, /^Opus$/, 'model-name')).toBeDefined()
   await ui.unmount()

@@ -50,7 +50,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 ## Marca martinezsebastian
 
-`brand-client.tsx` dibuja al final de la línea los corchetes `< >` del logo de la web con una barra que gira dentro (`/ - \ |`, 80 ms por fotograma) y cambia de color recorriendo el degradado de acento (#7cc4ff → #c084fc). Gira siempre, también en reposo. Se oculta con `SHOW_BRAND = false` en `register.tsx` (la capa sigue midiendo el ancho).
+`brand-client.tsx` dibuja en las últimas columnas de la línea los corchetes `< >` del logo de la web con una barra dentro: quieta (`</>`, #c084fc) en reposo; gira (`/ - \ |`, 80 ms) cambiando de color en el degradado de acento (#7cc4ff → #c084fc) mientras Claude trabaja y al pasar el ratón. El hover no avisa al mod, así que encima va una copia oculta que el hover revela y que solo gira mientras se ve (su región tiene columnas). Se quita con `SHOW_BRAND = false` en `register.tsx`. El ancho real de la fila lo mide una capa aparte (`measure-client.tsx`).
 
 La técnica de Claude Code (investigada, su código no es público): no es una imagen, son caracteres sustituidos en la misma celda a intervalo fijo, con una secuencia de fotogramas fija en el código; el `✻` recuerda al logo de Anthropic, por eso parece que el logo "respira".
 

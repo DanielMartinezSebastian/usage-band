@@ -2,17 +2,14 @@ import type { ClientSurface, RenderElement } from 'claude-code'
 
 import { PALETTE } from './palette'
 
-// La marca martinezsebastian al final de la línea: los corchetes `< >` de su
-// logo con una barra que gira dentro (/ - \ |), cada fotograma sustituyendo
-// al anterior en la misma celda, como el spinner de Claude Code, y su color
-// recorriendo el degradado de acento de la web (#7cc4ff → #c084fc).
-//
-// Es una capa de toda la fila: se pinta a la derecha si tras la línea
-// (`lineWidth`) queda sitio, y envía al hooks module el ancho de la fila,
-// que Claude Code no le dice.
+// La marca martinezsebastian: los corchetes `< >` de su logo con una barra
+// dentro. Con `spin` la barra gira (/ - \ |), cada fotograma sustituyendo al
+// anterior en la misma celda, como el spinner de Claude Code, y su color
+// recorre el degradado de acento de la web (#7cc4ff → #c084fc); sin él se
+// queda quieta. La copia del hover está oculta hasta que el puntero la
+// revela, y solo gira mientras se ve (su región tiene columnas).
 
-// `show`: pintar la marca; sin ella la capa solo mide.
-export type BrandProps = { isWorking: boolean; lineWidth: number; show: boolean }
+export type BrandProps = { spin: boolean }
 
 type State = { step: number }
 
@@ -24,8 +21,6 @@ const COLOR_STEPS = 24
 const rgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
 const FROM = rgb(PALETTE.acc)
 const TO = rgb(PALETTE.acc2)
-const WIDTH = 3
-const GAP = 1 // espacio mínimo entre la línea y la marca
 
 // El color de la barra: va y vuelve entre los dos acentos.
 const tint = (step: number) => {
@@ -33,37 +28,29 @@ const tint = (step: number) => {
   return `#${FROM.map((c, i) => Math.round(c + (TO[i]! - c) * t).toString(16).padStart(2, '0')).join('')}`
 }
 
-// El último ancho enviado, para no repetirlo.
-let sentWidth = -1
+// Si cada instancia debe girar ahora (hay dos: la de la línea y la del hover).
+const spinning = new WeakMap<object, boolean>()
 
 export default function Brand(props: BrandProps, surface: ClientSurface<State>): RenderElement {
-  const { Box, Text } = surface.elements
+  const { Text } = surface.elements
 
   if (surface.state === undefined) {
     surface.setState({ step: 0 })
+    // Cada instancia guarda si debe girar en su propio estado de reloj: solo
+    // avanza mientras gira y se ve; si no, ningún redibujo.
     surface.every(TICK_MS, () => {
       const s = surface.state
-      if (s) surface.setState({ step: s.step + 1 })
+      if (s && spinning.get(surface) && surface.columns > 0) surface.setState({ step: s.step + 1 })
     })
   }
-
-  if (surface.columns > 0 && surface.columns !== sentWidth) {
-    sentWidth = surface.columns
-    surface.post({ width: surface.columns })
-  }
-
-  if (!props.show || surface.columns - props.lineWidth < WIDTH + GAP) return <Text>{''}</Text>
+  spinning.set(surface, props.spin)
 
   const step = surface.state?.step ?? 0
-  const glyph = FRAMES[step % FRAMES.length]
-  const color = tint(step)
   return (
-    <Box width="100%" justifyContent="flex-end">
-      <Text>
-        <Text bold color={PALETTE.fg}>{'<'}</Text>
-        <Text color={color}>{glyph}</Text>
-        <Text bold color={PALETTE.fg}>{'>'}</Text>
-      </Text>
-    </Box>
+    <Text>
+      <Text bold color={PALETTE.fg}>{'<'}</Text>
+      <Text color={props.spin ? tint(step) : PALETTE.acc2}>{props.spin ? FRAMES[step % FRAMES.length] : '/'}</Text>
+      <Text bold color={PALETTE.fg}>{'>'}</Text>
+    </Text>
   )
 }
