@@ -18,6 +18,8 @@ import { PALETTE } from './palette'
 export type DetailProps = {
   id: string
   role?: 'exit'
+  // false: sin barrido de entrada ni de salida, y la barra ya llena.
+  animate?: boolean
   label: string
   labelColor: string
   // Con barra: el porcentaje, su color y las celdas de la barra (0, sin barra).
@@ -142,13 +144,13 @@ export default function Detail(props: DetailProps, surface: ClientSurface<State>
     // Ocultado: deja a la capa de salida lo que se veía.
     const last = lastShown.get(props.id)
     if (isVisible) exits.delete(props.id)
-    else if (last && last.shown > 0) exits.set(props.id, { rest: last.rest, from: last.shown })
+    else if (last && last.shown > 0 && props.animate !== false) exits.set(props.id, { rest: last.rest, from: last.shown })
     surface.setState({ ...surface.state, isVisible, openedAt: surface.state.tick, turn: 0 })
   }
   rotating.set(surface, (props.parts?.length ?? 0) > 1)
 
   const s = surface.state
-  const ms = s ? elapsed(s) : Infinity
+  const ms = s && props.animate !== false ? elapsed(s) : Infinity
   const parts = props.parts ?? []
   const rest = parts.length > 0 ? parts[(s?.turn ?? 0) % parts.length]! : (props.text ?? '')
   const pieces = piecesOf(props, rest, Math.min(ms / FILL_MS, 1))

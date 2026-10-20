@@ -1,6 +1,8 @@
 import type { Register, RenderChildren, SessionRateLimit, Timer } from 'claude-code'
 
+import { readConfig, STORE_KEY } from './config'
 import type { DetailProps } from './detail-client'
+import { registerPanel } from './panel'
 import { PALETTE } from './palette'
 
 // Línea mínima bajo el prompt (modelo · ctx · coste · 5h · wk). Cada métrica
@@ -83,6 +85,8 @@ const limitMetric = (
   label: string,
   w: SessionRateLimit | undefined,
   withDay: boolean,
+  warn: number,
+  crit: number,
 ): Metric | null => {
   if (!w) return null
   const details: Part[] = []
@@ -96,7 +100,7 @@ const limitMetric = (
   }
   const free = `${r1(100 - w.percentUsed)}% libre`
   details.push(part(`${r1(w.percentUsed)}% usado · ${free}`, free))
-  return { key, label, pct: w.percentUsed, color: level(w.percentUsed, 70, 90), isLimit: true, resetsAt, details }
+  return { key, label, pct: w.percentUsed, color: level(w.percentUsed, warn, crit), isLimit: true, resetsAt, details }
 }
 
 // Lo que el motor solo cuenta al trabajar: el esfuerzo de la última petición
@@ -116,22 +120,18 @@ let flashUntil = 0
 // lo mide una capa invisible que ocupa la fila entera (measure-client.tsx).
 let measured: number | undefined
 
-// La marca martinezsebastian al final de la línea (brand-client.tsx); false
-// la quita.
-const SHOW_BRAND = true
-
-// El brillo que recorre el nombre del modelo mientras Claude trabaja
-// (shimmer-client.tsx), apagado: ese papel lo hace ahora la marca. true lo
-// vuelve a encender.
-const SHOW_SHIMMER = false
-
 // El reloj rápido solo corre mientras alguna animación lo necesita.
 let ticker: { ms: number; timer: Timer } | undefined
 
-// El valor a mostrar de una métrica: sube contando cuando cambia.
-const displayed = (m: Metric, now: number) => {
+// El valor a mostrar de una métrica: sube contando cuando cambia (si
+// `animate`).
+const displayed = (m: Metric, now: number, animate: boolean) => {
   const prev = shown.get(m.key)
   shown.set(m.key, m.pct)
+  if (!animate) {
+    counting.delete(m.key)
+    return { value: m.pct, isCounting: false }
+  }
   if (prev !== undefined && prev !== m.pct) {
     const running = counting.get(m.key)
     const from = running ? running.from + (running.to - running.from) * Math.min((now - running.start) / COUNT_MS, 1) : prev
@@ -151,6 +151,9 @@ const displayed = (m: Metric, now: number) => {
 const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined)
 
 export const register: Register = on => {
+  // El comando /usage-band y su panel de configuración.
+  registerPanel(on)
+
   // turn.step es un evento en streaming: el hook es un generador que reenvía.
   on('turn.step', async function* ($, e, next) {
     if (!e.agentId && e.effort != null) lastEffort = String(e.effort)
@@ -162,7 +165,8 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('session.start', ($, e, next) => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({ name: 'usage-band', description: 'Personaliza la línea de uso bajo el prompt' })
     ticker = undefined
     // Borra el aviso fijado bajo el prompt que dejó un diagnóstico anterior:
     // un $.ui.status se queda hasta que el mod lo quita.
@@ -189,12 +193,15 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const [{ context, rateLimits, cost }, model, settings, version] = await Promise.all([
+    const [{ context, rateLimits, cost }, model, settings, version, saved] = await Promise.all([
       $.session.usage(),
       $.session.model(),
       $.settings.read(),
       $.session.version(),
+      $.store.get(STORE_KEY),
     ])
+    // Lo personalizado con /usage-band.
+    const config = readConfig(saved)
     const now = Date.now()
 
     // Detalle del modelo: con qué está configurada la sesión.
@@ -213,13 +220,13 @@ export const register: Register = on => {
     ].filter((d): d is Part => d !== undefined)
 
     const ctx: Metric | null =
-      context.percent == null
+      !config.ctx || context.percent == null
         ? null
         : {
             key: 'ctx',
             label: 'ctx',
             pct: context.percent,
-            color: level(context.percent, 50, 80),
+            color: level(context.percent, config.ctxWarn, config.ctxCrit),
             isLimit: false,
             details: [
               part(
@@ -232,23 +239,28 @@ export const register: Register = on => {
               ),
             ],
           }
-    const five = limitMetric('five', '5h', rateLimits.find(r => r.kind === 'five_hour'), false)
-    const week = limitMetric('week', 'wk', rateLimits.find(r => r.kind === 'seven_day'), true)
+    const { limitWarn, limitCrit } = config
+    const fiveWindow = limitMetric('five', '5h', rateLimits.find(r => r.kind === 'five_hour'), false, limitWarn, limitCrit)
+    const week = config.week
+      ? limitMetric('week', 'wk', rateLimits.find(r => r.kind === 'seven_day'), true, limitWarn, limitCrit)
+      : null
 
     // Ventana nueva: el reinicio que conocíamos ya pasó (la ventana se fue o
     // llegó otra con un reinicio posterior).
-    if (lastFiveReset !== undefined && lastFiveReset <= now && five?.resetsAt !== lastFiveReset) {
+    if (lastFiveReset !== undefined && lastFiveReset <= now && fiveWindow?.resetsAt !== lastFiveReset) {
       flashUntil = now + FLASH_MS
     }
-    lastFiveReset = five?.resetsAt ?? (lastFiveReset !== undefined && lastFiveReset > now ? lastFiveReset : undefined)
-    const isFlashing = now < flashUntil
+    lastFiveReset =
+      fiveWindow?.resetsAt ?? (lastFiveReset !== undefined && lastFiveReset > now ? lastFiveReset : undefined)
+    const five = config.five ? fiveWindow : null
+    const isFlashing = config.five && config.countdown && now < flashUntil
 
     const metrics = [ctx, five, week].filter((m): m is Metric => m !== null)
-    const values = new Map(metrics.map(m => [m.key, displayed(m, now)]))
-    const isPulsing = metrics.some(m => m.isLimit && m.pct >= 90)
+    const values = new Map(metrics.map(m => [m.key, displayed(m, now, config.count)]))
+    const isPulsing = config.pulse && metrics.some(m => m.isLimit && m.pct >= limitCrit)
     const isPulseDim = isPulsing && Math.floor(now / PULSE_MS) % 2 === 1
     const fiveLeft = five?.resetsAt !== undefined ? five.resetsAt - now : undefined
-    const isCountdown = fiveLeft !== undefined && fiveLeft > 0 && fiveLeft <= COUNTDOWN_MS
+    const isCountdown = config.countdown && fiveLeft !== undefined && fiveLeft > 0 && fiveLeft <= COUNTDOWN_MS
     const isCounting = [...values.values()].some(v => v.isCounting)
 
     // El reloj más lento que aún mueve todas las animaciones en curso.
@@ -275,6 +287,7 @@ export const register: Register = on => {
       if (isFlashing) return { text: ' ventana nueva', color: PALETTE.ok, bold: true }
       if (m.resetsAt === undefined) return null
       if (isCountdown) return { text: ` ${countdown(m.resetsAt - now)}`, color: PALETTE.warn }
+      if (!config.fiveReset) return null
       return { text: ` ${clockTime(new Date(m.resetsAt))}`, color: PALETTE.mut }
     }
 
@@ -291,14 +304,17 @@ export const register: Register = on => {
     const shortName = fullName.split(' ')[0] ?? fullName
     const costText = `$${r1(cost?.usd ?? 0)}`
     type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean }
-    const layouts: Layout[] = [
-      { name: fullName, ctx: true, cost: true, week: true },
-      { name: fullName, ctx: true, cost: false, week: true },
-      { name: shortName, ctx: true, cost: false, week: true },
-      { name: shortName, ctx: true, cost: false, week: false },
-      { name: shortName, ctx: false, cost: false, week: false },
-      { ctx: false, cost: false, week: false },
-    ]
+    // Lo que se quitó en /usage-band no está en ningún nivel.
+    const layouts: Layout[] = (
+      [
+        { name: fullName, ctx: true, cost: true, week: true },
+        { name: fullName, ctx: true, cost: false, week: true },
+        { name: shortName, ctx: true, cost: false, week: true },
+        { name: shortName, ctx: true, cost: false, week: false },
+        { name: shortName, ctx: false, cost: false, week: false },
+        { ctx: false, cost: false, week: false },
+      ] as Layout[]
+    ).map(l => ({ ...l, name: config.model ? l.name : undefined, cost: l.cost && config.cost }))
     const metricWidth = (m: Metric) => m.label.length + 1 + pctText(m).length + (inline(m)?.text.length ?? 0)
     // Los tramos de la línea en orden, con su ancho; la métrica, si lo es.
     const pieces = (l: Layout) =>
@@ -318,7 +334,7 @@ export const register: Register = on => {
       columns === undefined ? layouts[0]! : (layouts.find(l => lineWidth(l) <= columns) ?? layouts[layouts.length - 1]!)
     // La marca ocupa las últimas columnas si tras la línea queda sitio.
     const BRAND = 3
-    const hasBrand = SHOW_BRAND && columns !== undefined && columns - lineWidth(layout) >= BRAND + 1
+    const hasBrand = config.brand && columns !== undefined && columns - lineWidth(layout) >= BRAND + 1
 
     // Columna donde empieza la etiqueta de cada métrica visible: el detalle se
     // abre ahí, hacia la derecha.
@@ -337,7 +353,7 @@ export const register: Register = on => {
     // aquí, así que nada sale de ella.
     const segment = (m: Metric, isFirst: boolean) => {
       const v = values.get(m.key)!
-      const isAlarm = m.isLimit && m.pct >= 90
+      const isAlarm = m.isLimit && m.pct >= limitCrit
       const extra = inline(m)
       return (
         <Box flexDirection="row" flexShrink={0} hover={{ scope: m.key }}>
@@ -431,7 +447,7 @@ export const register: Register = on => {
     // siempre visible y vacía, que lo retira de derecha a izquierda cuando el
     // hover lo oculta. Todas las de salida van antes que todas las del hover,
     // para que un detalle abierto quede siempre por encima.
-    type Layer = { key: string; left: number; props: Omit<DetailProps, 'id' | 'role'> }
+    type Layer = { key: string; left: number; props: Omit<DetailProps, 'id' | 'role' | 'animate'> }
 
     const exitLayer = (l: Layer) => (
       <Box position="absolute" top={0} left={l.left} width={overlayWidth(l.left) ?? '100%'}>
@@ -439,7 +455,7 @@ export const register: Register = on => {
           key={`exit-${l.key}`}
           module="./detail-client.tsx"
           width="100%"
-          props={{ ...l.props, id: l.key, role: 'exit' }}
+          props={{ ...l.props, id: l.key, role: 'exit', animate: config.wipe }}
         />
       </Box>
     )
@@ -448,7 +464,7 @@ export const register: Register = on => {
     // buscar dónde empieza.
     const hoverLayer = (l: Layer) =>
       overlay(l.key, l.left, [
-        <Client key={`detail-${l.key}`} module="./detail-client.tsx" width="100%" props={{ ...l.props, id: l.key }} />,
+        <Client key={`detail-${l.key}`} module="./detail-client.tsx" width="100%" props={{ ...l.props, id: l.key, animate: config.wipe }} />,
       ])
 
     const metricLayer = (m: Metric): Layer => {
@@ -488,7 +504,7 @@ export const register: Register = on => {
             <Client
               key="model-name"
               module="./shimmer-client.tsx"
-              props={{ text: layout.name, color: PALETTE.acc2, isWorking: SHOW_SHIMMER && e.props.isWorking }}
+              props={{ text: layout.name, color: PALETTE.acc2, isWorking: config.shimmer && e.props.isWorking }}
             />
           </Box>
         ) : null}
@@ -515,9 +531,9 @@ export const register: Register = on => {
           // encima, una copia oculta que el hover revela y que gira mientras
           // se ve, para que también gire al pasar el ratón.
           <Box position="absolute" top={0} left={columns! - BRAND} width={BRAND} hover={{ scope: 'brand' }}>
-            <Client key="brand" module="./brand-client.tsx" props={{ spin: e.props.isWorking }} />
+            <Client key="brand" module="./brand-client.tsx" props={{ spin: config.spin && e.props.isWorking }} />
             <Box display="none" hover={{ display: 'flex', scope: 'brand' }} position="absolute" top={0} left={0}>
-              <Client key="brand-hover" module="./brand-client.tsx" props={{ spin: true }} />
+              <Client key="brand-hover" module="./brand-client.tsx" props={{ spin: config.spin }} />
             </Box>
           </Box>
         ) : null}

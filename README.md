@@ -26,6 +26,17 @@ Necesita una suscripción Pro o Max de claude.ai para los datos de la ventana de
 
 Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` en `~/.claude/settings.json` a la carpeta del repositorio; así sustituyó al antiguo statusLine del autor.
 
+## Personalizar: `/usage-band`
+
+Escribe `/usage-band` en el prompt para abrir el panel de configuración (Esc o `q` lo cierran). Cada opción tiene su tecla y se guarda al momento (en `$.store`, dura entre sesiones); la línea se redibuja en el acto.
+
+- **Línea** (`1`–`7`): modelo, contexto, importe, ventana de 5 h, hora de reinicio, semana, marca `< >`.
+- **Animaciones** (`a`–`f`): conteo, pulso al 90 %, cuenta atrás, barrido de detalles, giro de la marca, brillo del modelo (apagado por defecto).
+- **Umbrales de color** (`g`–`n`, de 5 en 5): aviso y alarma de los límites (70/90 %) y del contexto (50/80 %).
+- `r` restablece los valores por defecto.
+
+Los valores por defecto y su validación están en `hooks/config.ts`; el panel, en `hooks/panel.tsx`.
+
 ## Estado (2026-10-20)
 
 **Línea**
@@ -44,7 +55,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 - Conteo cuando un % cambia (600 ms, negrita).
 - Pulso rojo/tenue en un límite ≥ 90 %.
 - Cuenta atrás `m:ss` en los últimos 10 min de la ventana de 5 h; destello verde "ventana nueva" al reiniciarse.
-- Brillo que recorre el nombre del modelo mientras Claude trabaja (`shimmer-client.tsx`): **apagado** (`SHOW_SHIMMER = false` en `register.tsx`) porque ese papel lo hace la marca; `true` lo vuelve a encender.
+- Brillo que recorre el nombre del modelo mientras Claude trabaja (`shimmer-client.tsx`): **apagado** por defecto porque ese papel lo hace la marca; se enciende en `/usage-band` (tecla `f`).
 - Al revelarse, cada detalle se construye de izquierda a derecha en 180 ms (solo el contenido, sin cursor), y su barra se llena desde 0 en 200 ms (`detail-client.tsx`: detecta el paso de 0 a >0 columnas; dibuja etiqueta, barra, texto y la rotación).
 - Al ocultarse, el detalle se retira de derecha a izquierda en 180 ms dejando ver la línea. La superficie oculta el detalle al instante, así que cada detalle tiene una segunda capa siempre visible y vacía (`role: 'exit'`, mismo Client) que recibe lo que se veía por estado compartido del módulo, sin pasar por el hooks module.
 
@@ -52,7 +63,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 ## Marca martinezsebastian
 
-`brand-client.tsx` dibuja en las últimas columnas de la línea los corchetes `< >` del logo de la web con una barra dentro: vacía (`< >`) en reposo; gira (`/ - \ |`, 80 ms) cambiando de color en el degradado de acento (#7cc4ff → #c084fc) mientras Claude trabaja y al pasar el ratón. El hover no avisa al mod, así que encima va una copia oculta que el hover revela y que solo gira mientras se ve (su región tiene columnas). Siempre se ve: va al final del árbol (encima de los detalles y de sus barridos) y los detalles acaban una columna antes de ella. Se quita con `SHOW_BRAND = false` en `register.tsx`. El ancho real de la fila lo mide una capa aparte (`measure-client.tsx`).
+`brand-client.tsx` dibuja en las últimas columnas de la línea los corchetes `< >` del logo de la web con una barra dentro: vacía (`< >`) en reposo; gira (`/ - \ |`, 80 ms) cambiando de color en el degradado de acento (#7cc4ff → #c084fc) mientras Claude trabaja y al pasar el ratón. El hover no avisa al mod, así que encima va una copia oculta que el hover revela y que solo gira mientras se ve (su región tiene columnas). Siempre se ve: va al final del árbol (encima de los detalles y de sus barridos) y los detalles acaban una columna antes de ella. Se quita en `/usage-band` (tecla `7`). El ancho real de la fila lo mide una capa aparte (`measure-client.tsx`).
 
 La técnica de Claude Code (investigada, su código no es público): no es una imagen, son caracteres sustituidos en la misma celda a intervalo fijo, con una secuencia de fotogramas fija en el código; el `✻` recuerda al logo de Anthropic, por eso parece que el logo "respira".
 
@@ -76,7 +87,7 @@ Pendiente: queda un puntito `·` en la fila de debajo. Parece de Claude Code (as
 4. Animaciones: conteo, pulso, cuenta atrás, barra que se llena, barrido de entrada y de salida.
 5. Colores corporativos y marca `< >` que gira al pensar y al pasar el ratón.
 6. Probado y quitado: banda sobre el prompt, Client para el hover (no recibe el ratón en esta terminal), cursor en el barrido, brillo del modelo (apagado), detalle del importe.
-7. Siguiente: comando `/usage-band` con un panel de configuración para personalizar la línea.
+7. Comando `/usage-band` con un panel de configuración (tramos, animaciones y umbrales), guardado en `$.store`.
 - `$` no se puede guardar en una variable; `turn.step` exige `async function*` con `return yield* next(e)`.
 
 ## Desarrollo

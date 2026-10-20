@@ -14,8 +14,9 @@ const usage = (rateLimits: SessionUsage['rateLimits'], percent?: number): Sessio
 })
 
 // Answers what the plugin reads beneath it; `reading` returns the current usage.
-const answerSession = (on: On, reading: () => SessionUsage) => {
+const answerSession = (on: On, reading: () => SessionUsage, saved: Record<string, unknown> = {}) => {
   mock.clock(on, { now: Date.now() })
+  mock.store(on, saved)
   on('session.usage', () => ({ value: reading() }))
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('settings.read', () => ({ value: { model: 'opus', effortLevel: 'high' } }))
@@ -307,4 +308,49 @@ test('el ancho medido (sin el indicador de Claude Code) ajusta la línea', async
   expect(await text(ui, /^\$0\.4$/)).toBeUndefined()
   expect(await text(ui, /^Opus$/, 'model-name')).toBeDefined()
   await ui.unmount()
+})
+
+test('la configuración guardada quita tramos, la hora de reinicio y la marca, y cambia los umbrales', async ($, on) => {
+  answerSession(on, FULL, { config: { cost: false, week: false, fiveReset: false, brand: false, limitWarn: 30, limitCrit: 40 } })
+  const ui = await mountAt($, 120)
+
+  expect(await text(ui, /^\$0\.4$/)).toBeUndefined()
+  expect(await text(ui, /^93%$/)).toBeUndefined()
+  expect(await text(ui, /^ \d\d:\d\d$/)).toBeUndefined()
+  expect(await ui.find({ key: 'brand' })).toBeUndefined()
+  // 42 % pasa a alarma con el umbral en 40 %.
+  expect((await text(ui, /^42%$/))?.props.color).toBe('#ff5470')
+  await ui.unmount()
+})
+
+test('/usage-band abre el panel: cada opción se guarda y se aplica a la línea', async ($, on) => {
+  answerSession(on, FULL)
+  const panel = await $.ui.mount({
+    plugin: 'usage-band',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'usage-band-config',
+    props: { title: 'usage-band', isFocused: true, bodyColumns: 60 } as RenderPropsOf['Pane'],
+  })
+  expect(await panel.find({ key: 'cost' })).toBeDefined()
+  expect(await panel.find({ key: 'limitWarn' })).toBeDefined()
+
+  // Quitar el importe y subir el aviso de los límites.
+  await panel.press({ key: 'cost' })
+  await panel.press({ key: 'limitWarn-up' })
+  // El panel muestra lo guardado: el importe desmarcado y el aviso en 75 %.
+  expect(await panel.find({ type: 'Text', text: /^ 75 % +$/ })).toBeDefined()
+
+  // Y la línea, dibujada después, ya no lleva importe.
+  const line = await mountAt($, 120)
+  expect(await text(line, /^\$0\.4$/)).toBeUndefined()
+  await line.unmount()
+
+  // Restablecer vuelve a los valores por defecto.
+  await panel.press({ key: 'reset' })
+  expect(await panel.find({ type: 'Text', text: /^ 70 % +$/ })).toBeDefined()
+  const restored = await mountAt($, 120)
+  expect(await text(restored, /^\$0\.4$/)).toBeDefined()
+  await restored.unmount()
+  await panel.unmount()
 })
