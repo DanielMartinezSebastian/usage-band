@@ -5,8 +5,8 @@ import { PALETTE } from './palette'
 // La marca martinezsebastian: los corchetes `< >` de su logo con una barra
 // dentro. Con `spin` la barra gira (/ - \ |), cada fotograma sustituyendo al
 // anterior en la misma celda, como el spinner de Claude Code, y su color
-// recorre el degradado de acento de la web (#7cc4ff → #c084fc); sin él se
-// queda quieta. La copia del hover está oculta hasta que el puntero la
+// recorre el degradado de acento de la web (#7cc4ff → #c084fc); sin él los
+// corchetes quedan vacíos. La copia del hover está oculta hasta que el puntero la
 // revela, y solo gira mientras se ve (su región tiene columnas).
 
 export type BrandProps = { spin: boolean }
@@ -49,7 +49,7 @@ export default function Brand(props: BrandProps, surface: ClientSurface<State>):
   return (
     <Text>
       <Text bold color={PALETTE.fg}>{'<'}</Text>
-      <Text color={props.spin ? tint(step) : PALETTE.acc2}>{props.spin ? FRAMES[step % FRAMES.length] : '/'}</Text>
+      <Text color={props.spin ? tint(step) : PALETTE.acc2}>{props.spin ? FRAMES[step % FRAMES.length] : ' '}</Text>
       <Text bold color={PALETTE.fg}>{'>'}</Text>
     </Text>
   )

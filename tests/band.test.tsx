@@ -201,18 +201,18 @@ test('responsive: a media anchura el detalle usa sus textos cortos en vez de cor
   await ui.unmount()
 })
 
-test('la marca: quieta en reposo, gira mientras Claude trabaja y al pasar el ratón', async ($, on) => {
+test('la marca: vacía en reposo, gira mientras Claude trabaja y al pasar el ratón', async ($, on) => {
   answerSession(on, FULL)
   const glyph = /^[/\\|-]$/
   const ui = await mountAt($, 120)
   // La copia del hover está oculta (sin columnas) hasta que el puntero la revela.
   await ui.resize({ columns: 0, rows: 0, in: 'brand-hover' })
 
-  // En reposo: quietas las dos.
-  expect((await text(ui, glyph, 'brand'))?.text).toBe('/')
+  // En reposo: `< >` vacía, y la copia oculta quieta.
+  expect(await text(ui, /^ $/, 'brand')).toBeDefined()
   const hidden = (await text(ui, glyph, 'brand-hover'))?.text
   await ui.advance(400)
-  expect((await text(ui, glyph, 'brand'))?.text).toBe('/')
+  expect(await text(ui, glyph, 'brand')).toBeUndefined()
   expect((await text(ui, glyph, 'brand-hover'))?.text).toBe(hidden)
 
   // Hover: revelada, la copia gira.

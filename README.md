@@ -44,13 +44,13 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 - Pulso rojo/tenue en un límite ≥ 90 %.
 - Cuenta atrás `m:ss` en los últimos 10 min de la ventana de 5 h; destello verde "ventana nueva" al reiniciarse.
 - Brillo blanco que recorre el nombre del modelo mientras Claude trabaja (`shimmer-client.tsx`).
-- La barra del detalle se llena desde 0 en 400 ms al revelarse (`bar-client.tsx`: detecta el paso de 0 a >0 columnas).
+- La barra del detalle se llena desde 0 en 200 ms al revelarse (`bar-client.tsx`: detecta el paso de 0 a >0 columnas).
 
 **Responsive**: si la línea no cabe se quita, por orden, el coste, la versión del modelo, la semana, el contexto y el modelo; la ventana de 5 h y su hora siempre quedan. Cada detalle tiene sus datos ordenados por importancia y en tres versiones (larga, media, corta); se usa la más rica que quepa: barra 16 + textos largos → textos medios → barra 8 + cortos → sin barra. Primero abierto desde su etiqueta; si no cabe, más a la izquierda; si ni la versión corta cabe, sus datos rotan de uno en uno cada 2 s (`rotate-client.tsx`).
 
 ## Marca martinezsebastian
 
-`brand-client.tsx` dibuja en las últimas columnas de la línea los corchetes `< >` del logo de la web con una barra dentro: quieta (`</>`, #c084fc) en reposo; gira (`/ - \ |`, 80 ms) cambiando de color en el degradado de acento (#7cc4ff → #c084fc) mientras Claude trabaja y al pasar el ratón. El hover no avisa al mod, así que encima va una copia oculta que el hover revela y que solo gira mientras se ve (su región tiene columnas). Se quita con `SHOW_BRAND = false` en `register.tsx`. El ancho real de la fila lo mide una capa aparte (`measure-client.tsx`).
+`brand-client.tsx` dibuja en las últimas columnas de la línea los corchetes `< >` del logo de la web con una barra dentro: vacía (`< >`) en reposo; gira (`/ - \ |`, 80 ms) cambiando de color en el degradado de acento (#7cc4ff → #c084fc) mientras Claude trabaja y al pasar el ratón. El hover no avisa al mod, así que encima va una copia oculta que el hover revela y que solo gira mientras se ve (su región tiene columnas). Se quita con `SHOW_BRAND = false` en `register.tsx`. El ancho real de la fila lo mide una capa aparte (`measure-client.tsx`).
 
 La técnica de Claude Code (investigada, su código no es público): no es una imagen, son caracteres sustituidos en la misma celda a intervalo fijo, con una secuencia de fotogramas fija en el código; el `✻` recuerda al logo de Anthropic, por eso parece que el logo "respira".
 

@@ -10,7 +10,7 @@ export type BarProps = { pct: number; color: string; cells: number }
 type State = { tick: number; isVisible: boolean; openedAt: number }
 
 const TICK_MS = 40
-const FILL_MS = 400
+const FILL_MS = 200
 
 const isFilling = (s: State) => s.isVisible && (s.tick - s.openedAt) * TICK_MS < FILL_MS
 
