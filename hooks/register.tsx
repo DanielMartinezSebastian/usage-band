@@ -349,13 +349,9 @@ export const register: Register = on => {
       )
     }
 
-    // Sin color de fondo: la capa tapa lo de debajo pintando cada celda, con
-    // el texto rellenado de espacios hasta el final de la fila.
+    // Sin color de fondo: la capa tapa lo de debajo pintando cada celda (el
+    // Client del detalle rellena con espacios hasta el final de la fila).
     const overlayWidth = (left: number) => (columns !== undefined ? Math.max(columns - left, 1) : undefined)
-    const fill = (text: string, left: number, used: number) => {
-      const width = overlayWidth(left)
-      return width === undefined ? text : text.padEnd(Math.max(width - used, 0))
-    }
 
     const overlay = (scope: string, left: number, children: RenderChildren[]) => (
       <Box
@@ -418,31 +414,23 @@ export const register: Register = on => {
       return { left: Math.max(0, Math.min(at, columns - (head + 3 + longest))), cells: 0, mode: 'rotate', parts: shorts }
     }
 
-    // El texto del detalle: fijo, o rotando si no cabe entero.
-    const rest = (key: string, p: Plan, used: number) =>
-      p.mode === 'rotate' ? (
-        <Client
-          key={`rotate-${key}`}
-          module="./rotate-client.tsx"
-          props={{ parts: p.parts, pad: Math.max((overlayWidth(p.left) ?? 0) - used, 0) }}
-        />
-      ) : (
-        <Text color={PALETTE.mut} wrap="truncate-end">
-          {fill(` · ${p.text}`, p.left, used)}
-        </Text>
-      )
+    // Lo que muestra un detalle tras su etiqueta según su plan: el texto
+    // entero, o sus datos por turnos si no cabe.
+    const restProps = (p: Plan) => (p.mode === 'rotate' ? { parts: p.parts } : { text: p.text })
 
     // El detalle repite la etiqueta donde estaba, así la vista no tiene que
-    // buscar dónde empieza. La barra es un Client: se llena al revelarse.
+    // buscar dónde empieza. Lo dibuja un Client: al revelarse se construye de
+    // izquierda a derecha y su barra se llena.
     const detail = (m: Metric) => {
-      const pct = `${r1(m.pct)}%`.length
-      const head = m.label.length + 1 + pct
+      const head = m.label.length + 1 + `${r1(m.pct)}%`.length
       const p = plan(labelAt.get(m.key) ?? 0, head, m.details, true)
-      const used = head + (p.cells > 0 ? p.cells + 1 : 0)
       return overlay(m.key, p.left, [
-        <Text bold color={PALETTE.acc}>{m.label} </Text>,
-        <Client key={`bar-${m.key}`} module="./bar-client.tsx" props={{ pct: m.pct, color: m.color, cells: p.cells }} />,
-        rest(m.key, p, used),
+        <Client
+          key={`detail-${m.key}`}
+          module="./detail-client.tsx"
+          width="100%"
+          props={{ label: m.label, labelColor: PALETTE.acc, pct: m.pct, color: m.color, cells: p.cells, ...restProps(p) }}
+        />,
       ])
     }
 
@@ -451,8 +439,12 @@ export const register: Register = on => {
     const modelDetail =
       layout.name !== undefined
         ? overlay('model', modelPlan.left, [
-            <Text bold color={PALETTE.acc2}>{fullName}</Text>,
-            rest('model', modelPlan, [...fullName].length),
+            <Client
+              key="detail-model"
+              module="./detail-client.tsx"
+              width="100%"
+              props={{ label: fullName, labelColor: PALETTE.acc2, ...restProps(modelPlan) }}
+            />,
           ])
         : null
 

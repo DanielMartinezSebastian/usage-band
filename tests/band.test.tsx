@@ -54,16 +54,28 @@ test('línea mínima: modelo, contexto, coste y límites con sus colores', async
   await ui.unmount()
 })
 
-test('cada métrica y el modelo tienen su detalle oculto para el hover', async ($, on) => {
+// Lo que hace el hover con un detalle: oculto no tiene columnas; revelado, las
+// gana, y el Client se construye. `settle` espera a que termine.
+const reveal = async (ui: Mounted, key: string, columns: number, settle = true) => {
+  await ui.resize({ columns: 0, rows: 0, in: `detail-${key}` })
+  await ui.resize({ columns, rows: 1, in: `detail-${key}` })
+  if (settle) await ui.advance(400)
+}
+
+test('cada métrica y el modelo tienen su detalle para el hover', async ($, on) => {
   answerSession(on, FULL)
   const ui = await mount($)
 
-  expect(await text(ui, /680k libres \(68%\) · 320k usados de 1M/)).toBeDefined()
-  expect(await text(ui, /reinicia \d\d:\d\d · faltan 2h\dm/)).toBeDefined()
-  expect(await text(ui, /reinicia (dom|lun|mar|mié|jue|vie|sáb) \d\d:\d\d · faltan 3d\d+h/)).toBeDefined()
-  expect(
-    await text(ui, /esfuerzo high · ventana 1M · estilo default · claude-opus-5-5 · ajuste "opus" · Claude Code 2\.1\.302/),
-  ).toBeDefined()
+  const details: [string, RegExp][] = [
+    ['ctx', /680k libres \(68%\) · 320k usados de 1M/],
+    ['five', /reinicia \d\d:\d\d · faltan 2h\dm/],
+    ['week', /reinicia (dom|lun|mar|mié|jue|vie|sáb) \d\d:\d\d · faltan 3d\d+h/],
+    ['model', /esfuerzo high · ventana 1M · estilo default · claude-opus-5-5 · ajuste "opus" · Claude Code 2\.1\.302/],
+  ]
+  for (const [key, pattern] of details) {
+    await reveal(ui, key, 160)
+    expect(await text(ui, pattern, `detail-${key}`)).toBeDefined()
+  }
   await ui.unmount()
 })
 
@@ -85,17 +97,23 @@ test('cada detalle se abre desde la etiqueta de su métrica, hacia la derecha', 
   await ui.unmount()
 })
 
-test('la barra del detalle se llena desde cero al revelarse', async ($, on) => {
+test('al revelarse, el detalle se construye de izquierda a derecha y su barra se llena', async ($, on) => {
   answerSession(on, FULL)
   const ui = await mount($)
 
-  // Oculta, sin tamaño; el hover la revela y la región gana columnas.
-  await ui.resize({ columns: 0, rows: 0, in: 'bar-five' })
-  await ui.resize({ columns: 30, rows: 1, in: 'bar-five' })
-  // El porcentaje va alineado al ancho del final ("42%"): " 0%" con un espacio más.
-  expect(await text(ui, /^█{0,2}░+  \d%$/, 'bar-five')).toBeDefined()
-  await ui.advance(1000)
-  expect(await text(ui, /^███████░{9} 42%$/, 'bar-five')).toBeDefined()
+  await reveal(ui, 'five', 80, false)
+  // Recién revelado: el borde del barrido va delante y la barra aún no está.
+  expect(await text(ui, /^▌$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /42%$/, 'detail-five')).toBeUndefined()
+  await ui.advance(80)
+  // A medio barrido: ya se ve la etiqueta y el borde sigue avanzando.
+  expect(await text(ui, /^5h $/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /^▌$/, 'detail-five')).toBeDefined()
+  await ui.advance(400)
+  // Construido: sin borde, la barra llena hasta el 42 % y el texto entero.
+  expect(await text(ui, /^▌$/, 'detail-five')).toBeUndefined()
+  expect(await text(ui, /^███████░{9} 42%$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /^ · reinicia \d\d:\d\d · faltan 2h\dm/, 'detail-five')).toBeDefined()
   await ui.unmount()
 })
 
@@ -184,11 +202,12 @@ test('responsive: muy estrecho deja el modelo corto y la ventana de 5 h con su h
   expect(await text(ui, /^93%$/)).toBeUndefined()
   // Ni la versión corta cabe: el detalle del 5h rota sus datos de uno en uno,
   // sin barra.
-  expect(await text(ui, /^ · \d\d:\d\d */, 'rotate-five')).toBeDefined()
+  await reveal(ui, 'five', 18)
+  expect(await text(ui, /^ · \d\d:\d\d$/, 'detail-five')).toBeDefined()
   await ui.advance(2000)
-  expect(await text(ui, /^ · 2h\dm */, 'rotate-five')).toBeDefined()
+  expect(await text(ui, /^ · 2h\dm$/, 'detail-five')).toBeDefined()
   await ui.advance(2000)
-  expect(await text(ui, /^ · 58% libre */, 'rotate-five')).toBeDefined()
+  expect(await text(ui, /^ · 58% libre$/, 'detail-five')).toBeDefined()
   await ui.unmount()
 })
 
@@ -197,7 +216,8 @@ test('responsive: a media anchura el detalle usa sus textos cortos en vez de cor
   const ui = await mountAt($, 40)
 
   // Sin barra y con los datos en corto: hora, lo que falta y lo libre.
-  expect(await text(ui, /^ · \d\d:\d\d · 2h\dm · 58% libre *$/)).toBeDefined()
+  await reveal(ui, 'five', 33)
+  expect(await text(ui, /^ · \d\d:\d\d · 2h\dm · 58% libre$/, 'detail-five')).toBeDefined()
   await ui.unmount()
 })
 
