@@ -275,6 +275,22 @@ test('la marca: vacía en reposo, gira mientras Claude trabaja y al pasar el rat
   await ui.unmount()
 })
 
+test('la marca siempre se ve: va encima de todo y los detalles acaban antes', async ($, on) => {
+  answerSession(on, FULL)
+  const ui = await mountAt($, 120)
+
+  const boxes = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute')
+  // La última capa absoluta de la fila es la marca, en las 3 últimas columnas.
+  const brand = boxes.filter(b => b.props.width === 3).at(-1)
+  expect(brand?.props.left).toBe(117)
+  // Ningún detalle (ni su capa de salida) llega a la marca ni a su separación.
+  for (const b of boxes) {
+    if (b === brand || b.props.width === 3 || b.props.width === '100%') continue
+    if (typeof b.props.width === 'number') expect(Number(b.props.left) + b.props.width).toBeLessThanOrEqual(116)
+  }
+  await ui.unmount()
+})
+
 test('la marca no se pinta si tras la línea no queda sitio', async ($, on) => {
   answerSession(on, FULL)
   // La línea mide 49: a 51 columnas no caben la marca y su separación.

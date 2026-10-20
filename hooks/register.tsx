@@ -352,7 +352,9 @@ export const register: Register = on => {
 
     // Sin color de fondo: la capa tapa lo de debajo pintando cada celda (el
     // Client del detalle rellena con espacios hasta el final de la fila).
-    const overlayWidth = (left: number) => (columns !== undefined ? Math.max(columns - left, 1) : undefined)
+    // Los detalles acaban antes de la marca (y su separación), que siempre se ve.
+    const detailEnd = columns !== undefined && hasBrand ? columns - BRAND - 1 : columns
+    const overlayWidth = (left: number) => (detailEnd !== undefined ? Math.max(detailEnd - left, 1) : undefined)
 
     const overlay = (scope: string, left: number, children: RenderChildren[]) => (
       <Box
@@ -398,21 +400,21 @@ export const register: Register = on => {
       const levels: readonly Level[] = bars ? LEVELS : TEXT_LEVELS
       const width = (l: Level) =>
         head + (l.cells > 0 ? l.cells + 1 : 0) + 3 + joined(parts, l.v).length
-      if (columns === undefined) {
+      if (detailEnd === undefined) {
         const l = levels[0]!
         return { left: at, cells: l.cells, mode: 'text', text: joined(parts, l.v) }
       }
       for (const l of levels) {
-        if (width(l) <= columns - at) return { left: at, cells: l.cells, mode: 'text', text: joined(parts, l.v) }
+        if (width(l) <= detailEnd - at) return { left: at, cells: l.cells, mode: 'text', text: joined(parts, l.v) }
       }
       for (const l of levels) {
-        if (width(l) <= columns) {
-          return { left: columns - width(l), cells: l.cells, mode: 'text', text: joined(parts, l.v) }
+        if (width(l) <= detailEnd) {
+          return { left: detailEnd - width(l), cells: l.cells, mode: 'text', text: joined(parts, l.v) }
         }
       }
       const shorts = parts.map(p => p[2])
       const longest = Math.max(0, ...shorts.map(t => t.length))
-      return { left: Math.max(0, Math.min(at, columns - (head + 3 + longest))), cells: 0, mode: 'rotate', parts: shorts }
+      return { left: Math.max(0, Math.min(at, detailEnd - (head + 3 + longest))), cells: 0, mode: 'rotate', parts: shorts }
     }
 
     // Lo que muestra un detalle tras su etiqueta según su plan: el texto
@@ -500,8 +502,11 @@ export const register: Register = on => {
           </Text>
         ) : null}
         {layout.week && week ? segment(week, lead()) : null}
+        {layers.map(exitLayer)}
+        {layers.map(hoverLayer)}
         {hasBrand ? (
-          // La marca, en las últimas columnas: gira mientras Claude trabaja;
+          // La marca, en las últimas columnas y al final del árbol para que
+          // ningún detalle ni barrido la tape: gira mientras Claude trabaja;
           // encima, una copia oculta que el hover revela y que gira mientras
           // se ve, para que también gire al pasar el ratón.
           <Box position="absolute" top={0} left={columns! - BRAND} width={BRAND} hover={{ scope: 'brand' }}>
@@ -511,8 +516,6 @@ export const register: Register = on => {
             </Box>
           </Box>
         ) : null}
-        {layers.map(exitLayer)}
-        {layers.map(hoverLayer)}
       </Box>
     )
   })
