@@ -375,7 +375,8 @@ export const register: Register = on => {
     const fullName = modelName(model)
     const shortName = fullName.split(' ')[0] ?? fullName
     const costText = `$${r1(cost?.usd ?? 0)}`
-    const AUTO = 'piloto ●'
+    // El interruptor del piloto automático: un punto y «on» u «off».
+    const AUTO = config.autoContinue ? '● on' : '● off'
     type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean; auto: boolean }
     // Lo que se quitó en /usage-band no está en ningún nivel.
     const layouts: Layout[] = (
@@ -396,24 +397,21 @@ export const register: Register = on => {
     const metricWidth = (m: Metric) => m.label.length + 1 + pctText(m).length + (inline(m)?.text.length ?? 0)
 
     // Los tramos de la línea, en el orden elegido en /usage-band, con su ancho;
-    // la métrica, si lo es. El interruptor del piloto automático va al final.
-    type LinePiece = { key: string; width: number; metric?: Metric }
+    // la métrica, si lo es. El interruptor del piloto automático va pegado
+    // tras la ventana de 5 h (`glued`: sin separador delante, solo un espacio).
+    type LinePiece = { key: string; width: number; metric?: Metric; glued?: boolean }
     const pieceOf = (segment: Segment, l: Layout): LinePiece[] => {
       if (segment === 'model') return l.name !== undefined ? [{ key: 'model', width: [...l.name].length }] : []
       if (segment === 'ctx') return l.ctx && ctx ? [{ key: 'ctx', width: metricWidth(ctx), metric: ctx }] : []
       if (segment === 'cost') return l.cost ? [{ key: 'cost', width: costText.length }] : []
       if (segment === 'week') return l.week && week ? [{ key: 'week', width: metricWidth(week), metric: week }] : []
-      if (five) return [{ key: 'five', width: metricWidth(five), metric: five }]
-      return isFlashing ? [{ key: 'flash', width: '5h ventana nueva'.length }] : []
+      const auto = l.auto ? [{ key: 'auto', width: 1 + AUTO.length, glued: true }] : []
+      if (five) return [{ key: 'five', width: metricWidth(five), metric: five }, ...auto]
+      return isFlashing ? [{ key: 'flash', width: '5h ventana nueva'.length }, ...auto] : []
     }
-    const pieces = (l: Layout): LinePiece[] => [
-      ...config.order.flatMap(segment => pieceOf(segment, l)),
-      ...(l.auto ? [{ key: 'auto', width: AUTO.length }] : []),
-    ]
-    const lineWidth = (l: Layout) => {
-      const ps = pieces(l)
-      return ps.reduce((n, p) => n + p.width, 0) + SEP * Math.max(ps.length - 1, 0)
-    }
+    const pieces = (l: Layout): LinePiece[] => config.order.flatMap(segment => pieceOf(segment, l))
+    const lineWidth = (l: Layout) =>
+      pieces(l).reduce((n, p, i) => n + p.width + (i > 0 && !p.glued ? SEP : 0), 0)
     const layout =
       columns === undefined ? layouts[0]! : (layouts.find(l => lineWidth(l) <= columns) ?? layouts[layouts.length - 1]!)
     // La marca ocupa las últimas columnas si tras la línea queda sitio.
@@ -425,7 +423,7 @@ export const register: Register = on => {
     const labelAt = new Map<string, number>()
     let x = 0
     pieces(layout).forEach((p, i) => {
-      if (i > 0) x += SEP
+      if (i > 0 && !p.glued) x += SEP
       labelAt.set(p.metric?.key ?? p.key, x)
       x += p.width
     })
@@ -612,7 +610,7 @@ export const register: Register = on => {
       }
       return (
         <Box flexDirection="row" flexShrink={0}>
-          {lead}
+          <Text> </Text>
           <Button key="auto" plain onPress={toggleAuto}>
             <Text color={config.autoContinue ? PALETTE.ok : PALETTE.mut}>{AUTO}</Text>
           </Button>

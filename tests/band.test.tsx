@@ -85,7 +85,7 @@ test('cada detalle se abre desde la etiqueta de su métrica, hacia la derecha', 
   answerSession(on, FULL)
   const ui = await mount($)
 
-  const line = 'Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 · wk 93%'
+  const line = 'Opus 5.5 · ctx 32% · $0.4 · 5h 42% 14:16 ● off · wk 93%'
   const layers = await ui.findAll({ type: 'Box' })
   const lefts = layers.filter(b => b.props.position === 'absolute').map(b => b.props.left)
   // Cada detalle tiene dos capas (salida y hover) en el mismo sitio; la de
@@ -380,7 +380,7 @@ test('el orden elegido cambia la posición de los tramos en la línea', async ($
 
   // 5h va primero: su detalle se abre en la columna 0.
   const lefts = (await ui.findAll({ type: 'Box' })).filter(b => b.props.position === 'absolute').map(b => b.props.left)
-  const line = '5h 42% 14:16 · wk 93% · Opus 5.5 · ctx 32% · $0.4'
+  const line = '5h 42% 14:16 ● off · wk 93% · Opus 5.5 · ctx 32% · $0.4'
   expect(new Set(lefts)).toEqual(new Set([0, line.indexOf('wk'), line.indexOf('Opus'), line.indexOf('ctx')]))
   await ui.unmount()
 })
@@ -389,11 +389,12 @@ test('el interruptor «piloto» de la línea enciende y apaga el piloto automát
   answerSession(on, FULL)
   const ui = await mountAt($, 160)
 
-  const label = /^piloto ●$/
-  expect((await text(ui, label))?.props.color).toBe('#9aa3b5')
+  // Pegado tras la hora de la ventana de 5 h: un punto y «off», gris.
+  expect((await text(ui, /^● off$/))?.props.color).toBe('#9aa3b5')
   await ui.press({ key: 'auto' })
   await ui.redraw()
-  expect((await text(ui, label))?.props.color).toBe('#3ddc84')
+  // Encendido: «on», en verde.
+  expect((await text(ui, /^● on$/))?.props.color).toBe('#3ddc84')
   await ui.unmount()
 })
 
