@@ -334,6 +334,9 @@ test('/usage-band abre el panel: cada opción se guarda y se aplica a la línea'
   })
   expect(await panel.find({ key: 'cost' })).toBeDefined()
   expect(await panel.find({ key: 'limitWarn' })).toBeDefined()
+  // El letrero de la cabecera, con su degradado de arriba abajo.
+  expect((await panel.find({ type: 'Text', text: /^▄█ ▄▄ ▄▄▀▄▄/ }))?.props.color).toBe('#7cc4ff')
+  expect((await panel.find({ type: 'Text', text: /^ +██▄▀▀ ██ ██/ }))?.props.color).toBe('#c084fc')
 
   // Quitar el importe y subir el aviso de los límites.
   await panel.press({ key: 'cost' })
@@ -352,5 +355,19 @@ test('/usage-band abre el panel: cada opción se guarda y se aplica a la línea'
   const restored = await mountAt($, 120)
   expect(await text(restored, /^\$0\.4$/)).toBeDefined()
   await restored.unmount()
+  await panel.unmount()
+})
+
+test('el letrero no sale si el panel es más estrecho que él', async ($, on) => {
+  answerSession(on, FULL)
+  const panel = await $.ui.mount({
+    plugin: 'usage-band',
+    surface: 'terminal',
+    component: 'Pane',
+    requestId: 'usage-band-config',
+    props: { title: 'usage-band', isFocused: true, bodyColumns: 30 } as RenderPropsOf['Pane'],
+  })
+  expect(await panel.find({ type: 'Text', text: /^▄█ ▄▄/ })).toBeUndefined()
+  expect(await panel.find({ key: 'cost' })).toBeDefined()
   await panel.unmount()
 })

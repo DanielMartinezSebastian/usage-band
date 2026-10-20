@@ -1,5 +1,6 @@
 import type { On } from 'claude-code'
 
+import { BANNER, BANNER_WIDTH, bannerColor } from './banner'
 import { DEFAULTS, readConfig, STORE_KEY } from './config'
 import type { Config, Threshold, Toggle } from './config'
 import { PALETTE } from './palette'
@@ -85,6 +86,14 @@ export const registerPanel = (on: On) => {
 
     return (
       <Box flexDirection="column" paddingX={1}>
+        {/* El letrero, solo si cabe entero en el panel. */}
+        {e.props.bodyColumns >= BANNER_WIDTH + 2 ? (
+          <Box flexDirection="column" marginBottom={1}>
+            {BANNER.map((row, i) => (
+              <Text color={bannerColor(i)}>{row}</Text>
+            ))}
+          </Box>
+        ) : null}
         {heading('Línea')}
         {LINE.map(toggle)}
         <Text> </Text>

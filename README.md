@@ -28,7 +28,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 
 ## Personalizar: `/usage-band`
 
-Escribe `/usage-band` en el prompt para abrir el panel de configuración (Esc o `q` lo cierran). Cada opción tiene su tecla y se guarda al momento (en `$.store`, dura entre sesiones); la línea se redibuja en el acto.
+Escribe `/usage-band` en el prompt para abrir el panel de configuración, con el letrero del mod en la cabecera (`hooks/banner.ts`, en el degradado de acento; no sale si el panel es más estrecho que él) (Esc o `q` lo cierran). Cada opción tiene su tecla y se guarda al momento (en `$.store`, dura entre sesiones); la línea se redibuja en el acto.
 
 - **Línea** (`1`–`7`): modelo, contexto, importe, ventana de 5 h, hora de reinicio, semana, marca `< >`.
 - **Animaciones** (`a`–`f`): conteo, pulso al 90 %, cuenta atrás, barrido de detalles, giro de la marca, brillo del modelo (apagado por defecto).
