@@ -43,7 +43,7 @@ Para desarrollarlo desde una copia local, apunta `env.CLAUDE_CODE_PLUGIN_DIRS` e
 - Conteo cuando un % cambia (600 ms, negrita).
 - Pulso rojo/tenue en un límite ≥ 90 %.
 - Cuenta atrás `m:ss` en los últimos 10 min de la ventana de 5 h; destello verde "ventana nueva" al reiniciarse.
-- Brillo blanco que recorre el nombre del modelo mientras Claude trabaja (`shimmer-client.tsx`).
+- Brillo que recorre el nombre del modelo mientras Claude trabaja (`shimmer-client.tsx`): **apagado** (`SHOW_SHIMMER = false` en `register.tsx`) porque ese papel lo hace la marca; `true` lo vuelve a encender.
 - Al revelarse, cada detalle se construye de izquierda a derecha en 180 ms (solo el contenido, sin cursor), y su barra se llena desde 0 en 200 ms (`detail-client.tsx`: detecta el paso de 0 a >0 columnas; dibuja etiqueta, barra, texto y la rotación).
 - Al ocultarse, el detalle se retira de derecha a izquierda en 180 ms dejando ver la línea. La superficie oculta el detalle al instante, así que cada detalle tiene una segunda capa siempre visible y vacía (`role: 'exit'`, mismo Client) que recibe lo que se veía por estado compartido del módulo, sin pasar por el hooks module.
 

@@ -120,6 +120,11 @@ let measured: number | undefined
 // la quita.
 const SHOW_BRAND = true
 
+// El brillo que recorre el nombre del modelo mientras Claude trabaja
+// (shimmer-client.tsx), apagado: ese papel lo hace ahora la marca. true lo
+// vuelve a encender.
+const SHOW_SHIMMER = false
+
 // El reloj rápido solo corre mientras alguna animación lo necesita.
 let ticker: { ms: number; timer: Timer } | undefined
 
@@ -483,7 +488,7 @@ export const register: Register = on => {
             <Client
               key="model-name"
               module="./shimmer-client.tsx"
-              props={{ text: layout.name, color: PALETTE.acc2, isWorking: e.props.isWorking }}
+              props={{ text: layout.name, color: PALETTE.acc2, isWorking: SHOW_SHIMMER && e.props.isWorking }}
             />
           </Box>
         ) : null}

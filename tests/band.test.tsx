@@ -116,14 +116,13 @@ test('al revelarse, el detalle se construye de izquierda a derecha y su barra se
   await ui.unmount()
 })
 
-test('el nombre del modelo brilla mientras Claude trabaja', async ($, on) => {
+test('el brillo del modelo está apagado: el nombre no cambia mientras Claude trabaja', async ($, on) => {
   answerSession(on, FULL)
   const ui = await mount($, { ...HINT, isWorking: true })
 
   await ui.advance(160)
-  const letters = await ui.findAll({ type: 'Text', text: /^.$/, in: 'model-name' })
-  expect(letters.some(l => l.props.color === '#e8ecf4')).toBe(true)
-  expect(letters.some(l => l.props.color === '#c084fc')).toBe(true)
+  expect((await text(ui, /^Opus 5\.5$/, 'model-name'))?.props.color).toBe('#c084fc')
+  expect(await ui.findAll({ type: 'Text', text: /^.$/, in: 'model-name' })).toHaveLength(0)
   await ui.unmount()
 })
 
