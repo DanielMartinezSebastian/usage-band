@@ -4,7 +4,7 @@ import { agentsRunning, registerAgents, resetAgents } from './agents'
 import { branchState, branchText, readBranch, registerBranch } from './branch'
 import { readConfig, STORE_KEY } from './config'
 import type { Segment } from './config'
-import type { DetailProps } from './detail-client'
+import type { DetailProps, Tint } from './detail-client'
 import {
   CONTINUE_TEXT,
   isPending,
@@ -17,7 +17,7 @@ import {
   windowLabel,
 } from './limits'
 import { registerPanel } from './panel'
-import { PALETTE } from './palette'
+import { DIM, mix, PALETTE } from './palette'
 
 // Línea mínima bajo el prompt (modelo · ctx · coste · 5h · wk). Cada métrica
 // tiene su propio hover: una capa de una fila, absoluta y opaca, con el
@@ -92,6 +92,10 @@ type Metric = {
   resetsAt?: number
   // Ordenados por importancia: lo que se recorta es siempre lo último.
   details: Part[]
+  // Color de cada dato del detalle, en el mismo orden (sin color: el apagado).
+  colors?: Tint[]
+  // Lo que se fija en la línea tras el porcentaje (el mayor consumidor del contexto).
+  tag?: { name: string; value: string; nameColor: string; color: string }
 }
 
 const limitMetric = (
@@ -104,18 +108,53 @@ const limitMetric = (
 ): Metric | null => {
   if (!w) return null
   const details: Part[] = []
+  const colors: Tint[] = []
+  // Cada dato: título de color fijo y valor, que es más claro cuanto más pesa.
+  const add = (p: Part, headColor: string, color: string) => {
+    details.push(p)
+    colors.push({ headColor, color })
+  }
+  const levelColor = level(w.percentUsed, warn, crit)
   let resetsAt: number | undefined
   if (w.resetsAt) {
     const d = new Date(w.resetsAt)
     resetsAt = d.getTime()
     const when = `${withDay ? `${DAYS[d.getDay()]} ` : ''}${clockTime(d)}`
     const left = timeLeft(d)
-    details.push(part(`reinicia ${when}`, when), part(`faltan ${left}`, `faltan ${left}`, left))
+    add(part(`Reinicia ${when}`, `↻ ${when}`), PALETTE.acc2, PALETTE.fg)
+    add(part(`Faltan ${left}`, `En ${left}`, left), PALETTE.acc, PALETTE.fg)
   }
-  const free = `${r1(100 - w.percentUsed)}% libre`
-  details.push(part(`${r1(w.percentUsed)}% usado · ${free}`, free))
-  return { key, label, pct: w.percentUsed, color: level(w.percentUsed, warn, crit), isLimit: true, resetsAt, details }
+  const used = Math.min(Math.max(w.percentUsed, 0), 100)
+  add(part(`Usado ${r1(used)}%`, `Uso ${r1(used)}%`), PALETTE.fg, mix(PALETTE.mut, levelColor, used / 70))
+  add(part(`Libre ${r1(100 - used)}%`, `Lib ${r1(100 - used)}%`), PALETTE.ok, mix(PALETTE.mut, PALETTE.ok, (100 - used) / 50))
+  return { key, label, pct: w.percentUsed, color: levelColor, isLimit: true, resetsAt, details, colors }
 }
+
+// Cada categoría del contexto (como las lista /context): su color y su forma
+// corta para la línea.
+const SHARE_STYLE: Record<string, { color: string; short: string }> = {
+  Messages: { color: PALETTE.acc, short: 'msg' },
+  'System prompt': { color: PALETTE.acc2, short: 'sys' },
+  'System tools': { color: PALETTE.warn, short: 'tools' },
+  'MCP tools': { color: PALETTE.ok, short: 'mcp' },
+  'Custom agents': { color: PALETTE.bad, short: 'agents' },
+  'Memory files': { color: PALETTE.ok, short: 'mem' },
+  Skills: { color: PALETTE.warn, short: 'skills' },
+}
+const shareStyle = (name: string) =>
+  SHARE_STYLE[name] ?? { color: PALETTE.fg, short: (name.split(' ')[0] ?? name).toLowerCase() }
+
+// "System tools" -> "SystemTools"
+const camel = (name: string) =>
+  name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+
+// El color de una categoría según lo que pesa en la ventana: gris oscuro si
+// es poco, su color entero a partir de SHARE_FULL (la fracción de la ventana).
+const SHARE_FULL = 0.4
+// En el hover el suelo es un gris claro (hay que poder leerlo); en la línea,
+// el gris oscuro.
+const shareTint = (name: string, fraction: number, floor: string = DIM) =>
+  mix(floor, shareStyle(name).color, fraction / SHARE_FULL)
 
 // Lo que el motor solo cuenta al trabajar: el esfuerzo de la última petición
 // del hilo principal (sigue a /effort) y el estilo de salida del prompt.
@@ -249,7 +288,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const [{ context, rateLimits, cost }, model, settings, version, saved] = await Promise.all([
-      $.session.usage(),
+      $.session.usage({ breakdown: 'summary' }),
       $.session.model(),
       $.settings.read(),
       $.session.version(),
@@ -263,17 +302,40 @@ export const register: Register = on => {
     const alias = str(settings.model)
     const effort = lastEffort ?? str(settings.effortLevel)
     // Ordenado por importancia: lo que se recorta es siempre lo último.
-    const modelDetails = [
-      part(`esfuerzo ${effort ?? 'por defecto'}`, `esf. ${effort ?? 'def.'}`),
-      part(`ventana ${tokens(context.window)}`, tokens(context.window)),
-      part(`estilo ${outputStyle ?? str(settings.outputStyle) ?? 'default'}`),
-      settings.alwaysThinkingEnabled === true ? part('thinking siempre', 'thinking') : undefined,
-      settings.fastMode === true ? part('fast mode', 'fast') : undefined,
-      part(model),
-      alias && alias !== model ? part(`ajuste "${alias}"`) : undefined,
-      part(`Claude Code ${version.version}`, `v${version.version}`),
-    ].filter((d): d is Part => d !== undefined)
+    const T = (headColor: string, color: string = PALETTE.fg): Tint => ({ headColor, color })
+    const style = outputStyle ?? str(settings.outputStyle) ?? 'default'
+    const modelData: { part: Part; tint: Tint }[] = [
+      { part: part(`Esfuerzo ${effort ?? 'por defecto'}`, `Esf. ${effort ?? 'def.'}`), tint: T(PALETTE.acc) },
+      { part: part(`Ventana ${tokens(context.window)}`, `Vent. ${tokens(context.window)}`), tint: T(PALETTE.acc) },
+      { part: part(`Estilo ${style}`, `Est. ${style}`), tint: T(PALETTE.acc) },
+      ...(settings.alwaysThinkingEnabled === true ? [{ part: part('Thinking siempre', 'Thinking'), tint: T(PALETTE.warn) }] : []),
+      ...(settings.fastMode === true ? [{ part: part('Fast on', 'Fast'), tint: T(PALETTE.warn) }] : []),
+      { part: part(`Id ${model}`), tint: T(PALETTE.acc, PALETTE.mut) },
+      ...(alias && alias !== model ? [{ part: part(`Ajuste ${alias}`), tint: T(PALETTE.acc) }] : []),
+      { part: part(`ClaudeCode ${version.version}`, `CC ${version.version}`, `v${version.version}`), tint: T(PALETTE.acc, PALETTE.mut) },
+    ]
+    const modelDetails = modelData.map(x => x.part)
+    const modelColors = modelData.map(x => x.tint)
 
+    // Reparto del contexto (los 4 mayores consumidores), tal como lo lista /context.
+    const total = context.breakdown?.rawMaxTokens || context.window
+    const used = (context.breakdown?.categories ?? [])
+      .filter(c => c.kind === 'used' && c.tokens > 0)
+      .sort((a, b) => b.tokens - a.tokens)
+    const shares = used.slice(0, 4).map(c => ({
+      // Largo: título en CamelCase y % de la ventana; medio: sin el %;
+      // corto: el título abreviado de la línea.
+      part: part(
+        `${camel(c.name)} ${tokens(c.tokens)} (${r1((c.tokens / total) * 100)}%)`,
+        `${camel(c.name)} ${tokens(c.tokens)}`,
+        `${shareStyle(c.name).short} ${tokens(c.tokens)}`,
+      ),
+      // El título con su color fijo; el valor, más claro cuanto más pesa.
+      tint: { headColor: shareStyle(c.name).color, color: shareTint(c.name, c.tokens / total, PALETTE.mut) },
+    }))
+    const top = used[0]
+
+    const free = Math.max(context.window - (context.tokens ?? 0), 0)
     const ctx: Metric | null =
       !config.ctx || context.percent == null
         ? null
@@ -283,17 +345,32 @@ export const register: Register = on => {
             pct: context.percent,
             color: level(context.percent, config.ctxWarn, config.ctxCrit),
             isLimit: false,
+            tag: top
+              ? { name: shareStyle(top.name).short, value: tokens(top.tokens), nameColor: shareStyle(top.name).color, color: shareTint(top.name, top.tokens / total) }
+              : undefined,
+            colors: [
+              { headColor: PALETTE.ok, color: mix(PALETTE.mut, PALETTE.ok, (100 - context.percent) / 50) },
+              {
+                headColor: PALETTE.fg,
+                color: mix(PALETTE.mut, level(context.percent, config.ctxWarn, config.ctxCrit), context.percent / 70),
+              },
+              ...shares.map(x => x.tint),
+            ],
             details: [
               part(
-                `${tokens(Math.max(context.window - (context.tokens ?? 0), 0))} libres (${r1(100 - context.percent)}%)`,
-                `${tokens(Math.max(context.window - (context.tokens ?? 0), 0))} libres`,
+                `Libres ${tokens(free)} (${r1(100 - context.percent)}%)`,
+                `Libres ${tokens(free)}`,
+                `Lib ${tokens(free)}`,
               ),
               part(
-                `${tokens(context.tokens ?? 0)} usados de ${tokens(context.window)}`,
-                `${tokens(context.tokens ?? 0)}/${tokens(context.window)}`,
+                `Usados ${tokens(context.tokens ?? 0)} de ${tokens(context.window)}`,
+                `Usados ${tokens(context.tokens ?? 0)}/${tokens(context.window)}`,
+                `Uso ${tokens(context.tokens ?? 0)}`,
               ),
+              ...shares.map(x => x.part),
             ],
           }
+
     const { limitWarn, limitCrit } = config
     const fiveWindow = limitMetric('five', '5h', rateLimits.find(r => r.kind === 'five_hour'), false, limitWarn, limitCrit)
     const week = config.week
@@ -378,7 +455,15 @@ export const register: Register = on => {
 
     // Lo que acompaña al 5h en la línea: la hora de reinicio, la cuenta atrás
     // o el aviso de ventana nueva.
-    const inline = (m: Metric): { text: string; color: string; bold?: boolean } | null => {
+    const inline = (
+      m: Metric,
+      share = true,
+    ): { text: string; color: string; bold?: boolean; head?: { text: string; color: string } } | null => {
+      if (m.key === 'ctx') {
+        if (!share || !config.ctxShare || !m.tag) return null
+        const head = ` ${m.tag.name}`
+        return { text: `${head} ${m.tag.value}`, color: m.tag.color, head: { text: head, color: m.tag.nameColor } }
+      }
       if (m.key !== 'five') return null
       if (isFlashing) return { text: ' ventana nueva', color: PALETTE.ok, bold: true }
       if (m.resetsAt === undefined) return null
@@ -402,16 +487,17 @@ export const register: Register = on => {
     // El interruptor del piloto automático: un bucle encendido, una señal de
     // prohibido apagado.
     const AUTO = config.autoContinue ? '⟳ on' : '⊘ off'
-    type Layout = { name?: string; ctx: boolean; cost: boolean; week: boolean; auto: boolean }
+    type Layout = { name?: string; ctx: boolean; share: boolean; cost: boolean; week: boolean; auto: boolean }
     // Lo que se quitó en /usage-band no está en ningún nivel.
     const layouts: Layout[] = (
       [
-        { name: fullName, ctx: true, cost: true, week: true, auto: true },
-        { name: fullName, ctx: true, cost: false, week: true, auto: true },
-        { name: shortName, ctx: true, cost: false, week: true, auto: false },
-        { name: shortName, ctx: true, cost: false, week: false, auto: false },
-        { name: shortName, ctx: false, cost: false, week: false, auto: false },
-        { ctx: false, cost: false, week: false, auto: false },
+        { name: fullName, ctx: true, share: true, cost: true, week: true, auto: true },
+        { name: fullName, ctx: true, share: true, cost: false, week: true, auto: true },
+        { name: fullName, ctx: true, share: false, cost: false, week: true, auto: true },
+        { name: shortName, ctx: true, share: false, cost: false, week: true, auto: false },
+        { name: shortName, ctx: true, share: false, cost: false, week: false, auto: false },
+        { name: shortName, ctx: false, share: false, cost: false, week: false, auto: false },
+        { ctx: false, share: false, cost: false, week: false, auto: false },
       ] as Layout[]
     ).map(l => ({
       ...l,
@@ -419,7 +505,8 @@ export const register: Register = on => {
       cost: l.cost && config.cost,
       auto: l.auto && config.auto,
     }))
-    const metricWidth = (m: Metric) => m.label.length + 1 + pctText(m).length + (inline(m)?.text.length ?? 0)
+    const metricWidth = (m: Metric, share = true) =>
+      m.label.length + 1 + pctText(m).length + (inline(m, share)?.text.length ?? 0)
 
     // Los tramos de la línea, en el orden elegido en /usage-band, con su ancho;
     // la métrica, si lo es. El interruptor del piloto automático va pegado
@@ -427,7 +514,7 @@ export const register: Register = on => {
     type LinePiece = { key: string; width: number; metric?: Metric; glued?: boolean }
     const pieceOf = (segment: Segment, l: Layout): LinePiece[] => {
       if (segment === 'model') return l.name !== undefined ? [{ key: 'model', width: [...l.name].length }] : []
-      if (segment === 'ctx') return l.ctx && ctx ? [{ key: 'ctx', width: metricWidth(ctx), metric: ctx }] : []
+      if (segment === 'ctx') return l.ctx && ctx ? [{ key: 'ctx', width: metricWidth(ctx, l.share), metric: ctx }] : []
       if (segment === 'cost') return l.cost ? [{ key: 'cost', width: costText.length }] : []
       if (segment === 'week') return l.week && week ? [{ key: 'week', width: metricWidth(week), metric: week }] : []
       const auto = l.auto ? [{ key: 'auto', width: 1 + AUTO.length, glued: true }] : []
@@ -473,7 +560,7 @@ export const register: Register = on => {
     const segment = (m: Metric, isFirst: boolean) => {
       const v = values.get(m.key)!
       const isAlarm = m.isLimit && m.pct >= limitCrit
-      const extra = inline(m)
+      const extra = inline(m, layout.share)
       return (
         <Box flexDirection="row" flexShrink={0} hover={{ scope: m.key }}>
           {isFirst ? null : sep}
@@ -481,7 +568,12 @@ export const register: Register = on => {
           <Text color={m.color} bold={v.isCounting} dimColor={isAlarm && isPulseDim}>
             {pctText(m)}
           </Text>
-          {extra ? (
+          {extra?.head ? (
+            <Text>
+              <Text color={extra.head.color}>{extra.head.text}</Text>
+              <Text color={extra.color}>{extra.text.slice(extra.head.text.length)}</Text>
+            </Text>
+          ) : extra ? (
             <Text color={extra.color} bold={extra.bold}>
               {extra.text}
             </Text>
@@ -533,14 +625,15 @@ export const register: Register = on => {
       | { left: number; cells: number; mode: 'text'; text: string }
       | { left: number; cells: number; mode: 'rotate'; parts: string[] }
 
-    const joined = (parts: Part[], v: number) => parts.map(p => p[v]!).join(' · ')
+    // Los datos van pegados por un espacio (\u001f, que el Client dibuja así).
+    const joined = (parts: Part[], v: number) => parts.map(p => p[v]!).join('\u001f')
 
-    // `head`: lo que va antes del texto (etiqueta y porcentaje, o el nombre);
-    // `bars`: si lleva barra.
-    const plan = (at: number, head: number, parts: Part[], bars: boolean): Plan => {
+    // `head`: la etiqueta o el nombre; `right`: lo que ocupa el porcentaje a la
+    // derecha del todo (0 sin él); `bars`: si lleva barra a su izquierda.
+    const plan = (at: number, head: number, parts: Part[], bars: boolean, right = 0): Plan => {
       const levels: readonly Level[] = bars ? LEVELS : TEXT_LEVELS
-      const width = (l: Level) =>
-        head + (l.cells > 0 ? l.cells + 1 : 0) + 3 + joined(parts, l.v).length
+      const tail = (l: Level) => (right > 0 ? 1 + (l.cells > 0 ? l.cells + 1 : 0) + right : 0)
+      const width = (l: Level) => head + 1 + joined(parts, l.v).length + tail(l)
       if (detailEnd === undefined) {
         const l = levels[0]!
         return { left: at, cells: l.cells, mode: 'text', text: joined(parts, l.v) }
@@ -555,7 +648,8 @@ export const register: Register = on => {
       }
       const shorts = parts.map(p => p[2])
       const longest = Math.max(0, ...shorts.map(t => t.length))
-      return { left: Math.max(0, Math.min(at, detailEnd - (head + 3 + longest))), cells: 0, mode: 'rotate', parts: shorts }
+      const need = head + 1 + longest + (right > 0 ? 1 + right : 0)
+      return { left: Math.max(0, Math.min(at, detailEnd - need)), cells: 0, mode: 'rotate', parts: shorts }
     }
 
     // Lo que muestra un detalle tras su etiqueta según su plan: el texto
@@ -588,12 +682,19 @@ export const register: Register = on => {
       ])
 
     const metricLayer = (m: Metric): Layer => {
-      const head = m.label.length + 1 + `${r1(m.pct)}%`.length
-      const p = plan(labelAt.get(m.key) ?? 0, head, m.details, true)
+      const p = plan(labelAt.get(m.key) ?? 0, m.label.length, m.details, true, `${r1(m.pct)}%`.length)
       return {
         key: m.key,
         left: p.left,
-        props: { label: m.label, labelColor: PALETTE.acc, pct: m.pct, color: m.color, cells: p.cells, ...restProps(p) },
+        props: {
+          label: m.label,
+          labelColor: PALETTE.acc,
+          pct: m.pct,
+          color: m.color,
+          cells: p.cells,
+          ...(m.colors ? { colors: m.colors } : {}),
+          ...restProps(p),
+        },
       }
     }
 
@@ -601,7 +702,7 @@ export const register: Register = on => {
     const layers: Layer[] = [
       ...metrics.filter(m => labelAt.has(m.key)).map(metricLayer),
       ...(layout.name !== undefined
-        ? [{ key: 'model', left: modelPlan.left, props: { label: fullName, labelColor: PALETTE.acc2, ...restProps(modelPlan) } }]
+        ? [{ key: 'model', left: modelPlan.left, props: { label: fullName, labelColor: PALETTE.acc2, colors: modelColors, ...restProps(modelPlan) } }]
         : []),
     ]
 

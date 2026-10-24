@@ -15,6 +15,10 @@ import { PALETTE } from './palette'
 // línea de debajo. Se avisan por estado compartido del módulo, sin pasar por
 // el hooks module, para que no haya un hueco entre las dos.
 
+// El color de un dato: uno solo, o el de su título (hasta el primer espacio)
+// aparte del de su valor.
+export type Tint = string | { headColor: string; color: string }
+
 export type DetailProps = {
   id: string
   role?: 'exit'
@@ -29,6 +33,8 @@ export type DetailProps = {
   // El texto tras la etiqueta, o sus datos por turnos si no cabe entero.
   text?: string
   parts?: string[]
+  // Color de cada dato (el de `parts`, o el de cada tramo ` · ` de `text`); sin color, el apagado.
+  colors?: Tint[]
 }
 
 type State = { tick: number; isVisible: boolean; openedAt: number; turn: number }
@@ -53,19 +59,53 @@ const isAnimating = (s: State) => s.isVisible && elapsed(s) < Math.max(WIPE_MS, 
 // Si cada instancia rota sus datos ahora.
 const rotating = new WeakMap<object, boolean>()
 // Lo último que mostró cada detalle: el dato del turno y cuántos caracteres.
-const lastShown = new Map<string, { rest: string; shown: number }>()
+const lastShown = new Map<string, { rest: string; shown: number; tints: Tint[] }>()
 // Las salidas pendientes o en curso, por detalle: lo que había a la vista al
 // ocultarse y, una vez empezada, el tick de la capa de salida en que empezó.
-const exits = new Map<string, { rest: string; from: number; start?: number }>()
+const exits = new Map<string, { rest: string; from: number; tints: Tint[]; start?: number }>()
 
 // Las piezas del detalle, en orden, con su estilo; `fill` de 0 a 1 es cuánto
 // se ha llenado la barra.
-const piecesOf = (props: DetailProps, rest: string, fill: number): Piece[] => {
-  // La etiqueta lleva un espacio detrás solo si sigue la barra (el resto ya
-  // empieza por ` · `).
-  const pieces: Piece[] = [
-    { text: props.pct !== undefined ? `${props.label} ` : props.label, color: props.labelColor, bold: true },
-  ]
+// El color de cada tramo ` · ` del dato mostrado: el del dato que toca por
+// turno, o el de cada tramo si los colores cuadran con ellos.
+// Los datos de `text` van separados por  y se ven con un solo espacio.
+const SPLIT = '\u001f'
+
+const tintsOf = (props: DetailProps, rest: string, turn: number): Tint[] => {
+  const colors = props.colors ?? []
+  if (props.parts !== undefined && props.parts.length > 0) return [colors[turn % props.parts.length] ?? '']
+  const count = rest.split(SPLIT).length
+  return colors.length === count ? colors : []
+}
+
+type Row = { left: Piece[]; gap: number; right: Piece[] }
+
+const piecesOf = (props: DetailProps, rest: string, fill: number, tints: Tint[], columns: number): Row => {
+  // A la izquierda la etiqueta y los datos (lo que barre la animación); a la
+  // derecha del todo (`columns` es el ancho de la capa) la barra y el
+  // porcentaje, con el hueco en medio. La derecha queda fuera del barrido:
+  // aparece al revelarse y se va al ocultarse.
+  const pieces: Piece[] = [{ text: props.label, color: props.labelColor, bold: true }]
+  // Sin colores, el dato va entero y apagado; con ellos, cada tramo con el suyo.
+  const lead = ' '
+  if (rest && tints.length === 0) pieces.push({ text: `${lead}${rest.split(SPLIT).join(lead)}`, color: PALETTE.mut })
+  else if (rest) {
+    rest.split(SPLIT).forEach((text, i) => {
+      const tint = tints[i]
+      if (typeof tint === 'object') {
+        pieces.push({ text: lead, color: PALETTE.mut })
+        // Sin espacio no hay título: todo es valor.
+        const head = Math.max(text.indexOf(' '), 0)
+        if (head > 0) pieces.push({ text: text.slice(0, head), color: tint.headColor })
+        pieces.push({ text: text.slice(head), color: tint.color })
+      } else {
+        pieces.push({ text: `${lead}${text}`, color: tint || PALETTE.mut })
+      }
+    })
+  }
+  const left = pieces.reduce((n, p) => n + [...p.text].length, 0)
+  const right: Piece[] = []
+  let gap = 0
   if (props.pct !== undefined) {
     const pct = props.pct * ease(fill)
     // El porcentaje ocupa siempre el ancho del valor final, para que nada se
@@ -73,10 +113,11 @@ const piecesOf = (props: DetailProps, rest: string, fill: number): Piece[] => {
     const final = `${Math.round(props.pct * 10) / 10}%`
     const label = fill < 1 ? `${Math.round(pct)}%`.padStart(final.length) : final
     const cells = props.cells ?? 0
-    pieces.push({ text: `${cells > 0 ? `${bar(pct, cells)} ` : ''}${label}`, color: props.color ?? PALETTE.fg })
+    const text = `${cells > 0 ? `${bar(pct, cells)} ` : ''}${label}`
+    gap = Math.max(columns - left - [...text].length, 1)
+    right.push({ text, color: props.color ?? PALETTE.fg })
   }
-  if (rest) pieces.push({ text: ` · ${rest}`, color: PALETTE.mut })
-  return pieces
+  return { left: pieces, gap, right }
 }
 
 // Los primeros `shown` caracteres de las piezas, con su estilo.
@@ -120,7 +161,7 @@ const Exit = (props: DetailProps, surface: ClientSurface<State>): RenderElement 
   }
   // Se retira de derecha a izquierda: lo que deja libre muestra la línea.
   const shown = Math.floor(ex.from * (1 - ease(t)))
-  return <Text wrap="truncate-end">{cut(surface, piecesOf(props, ex.rest, 1), shown).out}</Text>
+  return <Text wrap="truncate-end">{cut(surface, piecesOf(props, ex.rest, 1, ex.tints, surface.columns).left, shown).out}</Text>
 }
 
 export default function Detail(props: DetailProps, surface: ClientSurface<State>): RenderElement {
@@ -144,7 +185,7 @@ export default function Detail(props: DetailProps, surface: ClientSurface<State>
     // Ocultado: deja a la capa de salida lo que se veía.
     const last = lastShown.get(props.id)
     if (isVisible) exits.delete(props.id)
-    else if (last && last.shown > 0 && props.animate !== false) exits.set(props.id, { rest: last.rest, from: last.shown })
+    else if (last && last.shown > 0 && props.animate !== false) exits.set(props.id, { rest: last.rest, from: last.shown, tints: last.tints })
     surface.setState({ ...surface.state, isVisible, openedAt: surface.state.tick, turn: 0 })
   }
   rotating.set(surface, (props.parts?.length ?? 0) > 1)
@@ -153,14 +194,18 @@ export default function Detail(props: DetailProps, surface: ClientSurface<State>
   const ms = s && props.animate !== false ? elapsed(s) : Infinity
   const parts = props.parts ?? []
   const rest = parts.length > 0 ? parts[(s?.turn ?? 0) % parts.length]! : (props.text ?? '')
-  const pieces = piecesOf(props, rest, Math.min(ms / FILL_MS, 1))
+  const tints = tintsOf(props, rest, s?.turn ?? 0)
+  const pieces = piecesOf(props, rest, Math.min(ms / FILL_MS, 1), tints, surface.columns)
 
-  // Barrido: del contenido se ven los primeros `shown` caracteres; el resto de
-  // la fila queda en blanco, tapando la línea de debajo.
-  const length = pieces.reduce((n, p) => n + [...p.text].length, 0)
-  const { out, used } = cut(surface, pieces, Math.floor(length * ease(ms / WIPE_MS)))
-  if (isVisible) lastShown.set(props.id, { rest, shown: used })
-  out.push(<Text>{' '.repeat(Math.max(surface.columns - used, 0))}</Text>)
+  // Barrido: de la parte izquierda se ven los primeros `shown` caracteres; el
+  // resto de la fila queda en blanco, tapando la línea de debajo. La barra y el
+  // porcentaje de la derecha no barren: están desde que se revela el detalle.
+  const length = pieces.left.reduce((n, p) => n + [...p.text].length, 0)
+  const { out, used } = cut(surface, pieces.left, Math.floor(length * ease(ms / WIPE_MS)))
+  if (isVisible) lastShown.set(props.id, { rest, shown: used, tints })
+  out.push(<Text>{' '.repeat(Math.max(length + pieces.gap - used, 0))}</Text>)
+  for (const p of pieces.right) out.push(<Text color={p.color}>{p.text}</Text>)
+  if (pieces.right.length === 0) out.push(<Text>{' '.repeat(Math.max(surface.columns - length - pieces.gap, 0))}</Text>)
 
   return <Text wrap="truncate-end">{out}</Text>
 }

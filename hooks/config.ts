@@ -9,6 +9,7 @@ export type Config = {
   // Tramos de la línea.
   model: boolean
   ctx: boolean
+  ctxShare: boolean // el mayor consumidor del contexto fijo tras el ctx (`ctx 32% msg 180k`)
   cost: boolean
   five: boolean
   fiveReset: boolean // la hora de reinicio junto al 5h
@@ -42,6 +43,7 @@ export type Config = {
 export const DEFAULTS: Config = {
   model: true,
   ctx: true,
+  ctxShare: true,
   cost: true,
   five: true,
   fiveReset: true,

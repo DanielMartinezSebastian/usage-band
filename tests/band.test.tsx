@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
+import { mix } from '../hooks/palette'
 import type { On, RenderPropsOf, SessionUsage } from 'claude-code'
 
 const HINT: RenderPropsOf['PromptHint'] = { isDraft: false, isWorking: false, hint: '? for shortcuts' }
@@ -69,10 +70,10 @@ test('cada métrica y el modelo tienen su detalle para el hover', async ($, on) 
   const ui = await mount($)
 
   const details: [string, RegExp][] = [
-    ['ctx', /680k libres \(68%\) · 320k usados de 1M/],
-    ['five', /reinicia \d\d:\d\d · faltan 2h\dm/],
-    ['week', /reinicia (dom|lun|mar|mié|jue|vie|sáb) \d\d:\d\d · faltan 3d\d+h/],
-    ['model', /esfuerzo high · ventana 1M · estilo default · claude-opus-5-5 · ajuste "opus" · Claude Code 2\.1\.302/],
+    ['ctx', /Libres 680k \(68%\) Usados 320k de 1M/],
+    ['five', /Reinicia \d\d:\d\d Faltan 2h\dm Usado 42% Libre 58%/],
+    ['week', /Reinicia (dom|lun|mar|mié|jue|vie|sáb) \d\d:\d\d Faltan 3d\d+h Usado 93% Libre 7%/],
+    ['model', /Esfuerzo high Ventana 1M Estilo default Id claude-opus-5-5 Ajuste opus ClaudeCode 2\.1\.302/],
   ]
   for (const [key, pattern] of details) {
     await reveal(ui, key, 160)
@@ -106,15 +107,18 @@ test('al revelarse, el detalle se construye de izquierda a derecha y su barra se
   await reveal(ui, 'five', 80, false)
   // Recién revelado: aún no se ve nada del contenido.
   expect(await text(ui, /5h/, 'detail-five')).toBeUndefined()
-  await ui.advance(48)
-  // A medio barrido: ya está la etiqueta, pero no el final.
-  expect(await text(ui, /^5h $/, 'detail-five')).toBeDefined()
-  expect(await text(ui, /faltan/, 'detail-five')).toBeUndefined()
+  // La barra no barre: está desde el primer instante, aún vacía.
+  expect(await text(ui, /^░{16}  ?0%$/, 'detail-five')).toBeDefined()
+  await ui.advance(16)
+  // Al principio del barrido: ya está la etiqueta, pero no el final.
+  expect(await text(ui, /^5h$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /Faltan/, 'detail-five')).toBeUndefined()
   await ui.advance(400)
   // Construido: la barra llena hasta el 42 % y el texto entero, sin cursor.
   expect(await text(ui, /▌/, 'detail-five')).toBeUndefined()
   expect(await text(ui, /^███████░{9} 42%$/, 'detail-five')).toBeDefined()
-  expect(await text(ui, /^ · reinicia \d\d:\d\d · faltan 2h\dm/, 'detail-five')).toBeDefined()
+  expect((await text(ui, /^Reinicia$/, 'detail-five'))?.props.color).toBe('#c084fc')
+  expect(await text(ui, /^ \d\d:\d\d$/, 'detail-five')).toBeDefined()
   await ui.unmount()
 })
 
@@ -190,11 +194,11 @@ test('al ocultarse, el detalle se retira de derecha a izquierda', async ($, on) 
   // lo redibuja entero.
   await ui.resize({ columns: 0, rows: 0, in: 'detail-five' })
   await ui.advance(16)
-  expect(await text(ui, /faltan/, 'exit-five')).toBeDefined()
+  expect(await text(ui, /Faltan/, 'exit-five')).toBeDefined()
   // A medio camino ya se ha ido el final, pero sigue la etiqueta.
   await ui.advance(64)
-  expect(await text(ui, /faltan/, 'exit-five')).toBeUndefined()
-  expect(await text(ui, /^5h $/, 'exit-five')).toBeDefined()
+  expect(await text(ui, /Faltan/, 'exit-five')).toBeUndefined()
+  expect(await text(ui, /^5h$/, 'exit-five')).toBeDefined()
   // Al acabar no queda nada.
   await ui.advance(400)
   expect(await text(ui, /5h/, 'exit-five')).toBeUndefined()
@@ -225,11 +229,13 @@ test('responsive: muy estrecho deja el modelo corto y la ventana de 5 h con su h
   // Ni la versión corta cabe: el detalle del 5h rota sus datos de uno en uno,
   // sin barra.
   await reveal(ui, 'five', 18)
-  expect(await text(ui, /^ · \d\d:\d\d$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /^↻$/, 'detail-five')).toBeDefined()
   await ui.advance(2000)
-  expect(await text(ui, /^ · 2h\dm$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /^2h\dm$/, 'detail-five')).toBeDefined()
   await ui.advance(2000)
-  expect(await text(ui, /^ · 58% libre$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /^Uso$/, 'detail-five')).toBeDefined()
+  await ui.advance(2000)
+  expect(await text(ui, /^Lib$/, 'detail-five')).toBeDefined()
   await ui.unmount()
 })
 
@@ -239,7 +245,7 @@ test('responsive: a media anchura el detalle usa sus textos cortos en vez de cor
 
   // Sin barra y con los datos en corto: hora, lo que falta y lo libre.
   await reveal(ui, 'five', 33)
-  expect(await text(ui, /^ · \d\d:\d\d · 2h\dm · 58% libre$/, 'detail-five')).toBeDefined()
+  expect(await text(ui, /↻ \d\d:\d\d (En )?2h\dm Uso 42% Lib 58%/, 'detail-five')).toBeDefined()
   await ui.unmount()
 })
 
@@ -588,5 +594,81 @@ test('con subagentes en marcha los corchetes cambian de color y el interior solo
   await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 'sub-1', agentId: 'agent-1', reason: 'answer' })
   await ui.redraw(HINT)
   expect(await bracket()).toBe('#e8ecf4')
+  await ui.unmount()
+})
+
+// Reparto del contexto: el mayor consumidor queda fijo tras el ctx, con su
+// color, y el detalle lista los mayores, cada uno con el suyo.
+const withBreakdown = (): SessionUsage => {
+  const base = FULL()
+  const row = (name: string, tokens: number) => ({ name, tokens, color: 'x', isDeferred: false, kind: 'used' as const })
+  return {
+    ...base,
+    context: {
+      ...base.context,
+      breakdown: {
+        categories: [row('System prompt', 8_000), row('Messages', 250_000), row('System tools', 20_000)],
+        totalTokens: 320_000,
+        maxTokens: 1_000_000,
+        rawMaxTokens: 1_000_000,
+        percentage: 32,
+      },
+    },
+  } as SessionUsage
+}
+
+test('el mayor consumidor del contexto se fija tras el ctx y el detalle lo reparte con colores', async ($, on) => {
+  answerSession(on, withBreakdown)
+  const ui = await mount($)
+
+  // 25 % de la ventana: a mitad de camino entre el gris oscuro y el azul.
+  expect((await text(ui, /^ msg$/))?.props.color).toBe('#7cc4ff')
+  expect((await text(ui, /^ 250k$/))?.props.color).toBe(mix('#4a5163', '#7cc4ff', 0.625))
+  await reveal(ui, 'ctx', 120)
+  // El título lleva su color fijo; el valor, el del peso en la ventana.
+  expect((await text(ui, /^Messages$/, 'detail-ctx'))?.props.color).toBe('#7cc4ff')
+  expect((await text(ui, /^ 250k \(25%\)$/, 'detail-ctx'))?.props.color).toBe(mix('#9aa3b5', '#7cc4ff', 0.625))
+  expect((await text(ui, /^SystemTools$/, 'detail-ctx'))?.props.color).toBe('#ffb020')
+  expect((await text(ui, /^ 20k/, 'detail-ctx'))?.props.color).toBe(mix('#9aa3b5', '#ffb020', 0.05))
+  expect((await text(ui, /^Libres$/, 'detail-ctx'))?.props.color).toBe('#3ddc84')
+  await ui.unmount()
+})
+
+test('ctxShare apagado quita el reparto de la línea', async ($, on) => {
+  answerSession(on, withBreakdown, { config: { ctxShare: false } })
+  const ui = await mount($)
+
+  expect(await text(ui, /msg 250k/)).toBeUndefined()
+  await ui.unmount()
+})
+
+test('el reparto del hover se acorta con el ancho: CamelCase con %, y por último abreviado', async ($, on) => {
+  answerSession(on, withBreakdown)
+  const wide = await mountAt($, 220)
+  await reveal(wide, 'ctx', 200)
+  expect(await text(wide, /^SystemTools$/, 'detail-ctx')).toBeDefined()
+  expect(await text(wide, /^ 250k \(25%\)$/, 'detail-ctx')).toBeDefined()
+  await wide.unmount()
+
+  const narrow = await mountAt($, 40)
+  await reveal(narrow, 'ctx', 36)
+  expect(await text(narrow, /SystemTools|System tools/, 'detail-ctx')).toBeUndefined()
+  // Estrecho: los datos rotan de uno en uno y en su forma corta.
+  expect(await text(narrow, /^Lib$/, 'detail-ctx')).toBeDefined()
+  await narrow.advance(2000)
+  await narrow.advance(2000)
+  expect(await text(narrow, /^msg$/, 'detail-ctx')).toBeDefined()
+  await narrow.unmount()
+})
+
+test('la barra y el porcentaje van al final del todo del detalle, a la derecha', async ($, on) => {
+  answerSession(on, FULL)
+  const ui = await mountAt($, 120)
+  await reveal(ui, 'five', 100)
+
+  const row = await text(ui, /^5h /, 'detail-five')
+  // La fila ocupa todo el ancho y acaba en la barra con su porcentaje.
+  expect(row?.text).toMatch(/Libre 58%\s+█+░+ 42%$/)
+  expect([...(row?.text ?? '')]).toHaveLength(100)
   await ui.unmount()
 })

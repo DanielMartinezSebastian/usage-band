@@ -15,6 +15,7 @@ const PANE = 'usage-band-config'
 const LINE: [Toggle, string, string][] = [
   ['model', '1', 'Modelo'],
   ['ctx', '2', 'Contexto'],
+  ['ctxShare', 'z', 'Reparto junto al ctx'],
   ['cost', '3', 'Importe'],
   ['five', '4', 'Ventana 5 h'],
   ['fiveReset', '5', 'Hora de reinicio'],
